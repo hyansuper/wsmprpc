@@ -19,13 +19,11 @@ class RPCFuture(asyncio.Future):
         self._cancel = cancel
         self._msgid = msgid
         self._iter_task = None
-        # self.add_done_callback(lambda f: self._iter_task and self._iter_task.cancel())
+        self.add_done_callback(lambda f: self._iter_task and self._iter_task.cancel())
 
     @property
     def response_stream(self):
-        if not self._response_stream:
-            self._response_stream = RPCStream(self._q_size)
-        return self._response_stream
+        return self._response_stream or (self._response_stream:= RPCStream(self._q_size))
 
     def cancel(self):
         if not self.cancelled():
@@ -34,15 +32,13 @@ class RPCFuture(asyncio.Future):
         return asyncio.Future.cancel(self)
 
     def __aiter__(self):
-        if not self._iter_task:
-            self._iter_task = asyncio.create_task(self._start())
+        self._iter_task or (self._iter_task:= asyncio.create_task(self._start()))
         return self.response_stream
 
     def __await__(self):
         # await self._coro
         # self._coro.__await__()
-        if not self._iter_task:
-            self._iter_task = asyncio.create_task(self._start())
+        self._iter_task or (self._iter_task:= asyncio.create_task(self._start()))
         return asyncio.Future.__await__(self)
 
 
@@ -55,7 +51,7 @@ class RPCClient:
         self._tasks = {}
         asyncio.create_task(self._run())
 
-    def _msgid(self):
+    def _next_msgid(self):
         if self._mid >= 2**20:
             self._mid = 0
         self._mid += 1
@@ -68,7 +64,7 @@ class RPCClient:
                 msgtype = msg[0]
                 if msgtype == mtype.RESPONSE:
                     msgid, err, result = msg[1:]
-                    if t:= self._tasks.pop(msgid):
+                    if t:= self._tasks.pop(msgid, None):
                         if err:
                             if not t.cancelled():
                                 e = RPCError(err)
@@ -82,7 +78,7 @@ class RPCClient:
                     self._tasks[msgid].response_stream.put_nowait(chunck)
 
                 elif msgtype == mtype.RESPONSE_STREAM_END:
-                    if (t:=self._tasks.pop(msgid)) and not t.cancelled():
+                    if (t:=self._tasks.pop(msgid, None)) and not t.cancelled():
                         t.response_stream.force_put_nowait(StopAsyncIteration())
                         t.set_result(None)
 
@@ -115,8 +111,7 @@ class RPCClient:
         await self._send_stream_end(msgid)
 
     def _request(self, method, *args, **kwargs):
-
-        msgid = self._msgid()
+        msgid = self._next_msgid()
         req_iter = kwargs.pop('request_stream', None)
         async def start():
             await self._send_request(msgid, method, args or kwargs)

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class RPCServer:
 
-    def __init__(self, ws, handler, *, timeout: int = 10, use_list = False):
+    def __init__(self, ws, handler, *, timeout=10, use_list=False):
         self.ws = ws
         self.timeout = timeout
         self._packer = msgpack.Packer(use_bin_type=True)
@@ -21,7 +21,7 @@ class RPCServer:
         self._tasks: Dict[int, Tuple[asyncio.Task, Optional[wsrpc.RPCStream]]] = {}
         self.handler = handler
 
-    async def run(self) -> None:
+    async def run(self):
         async for data in self.ws:
             try:
                 await self._on_data(data)
@@ -32,12 +32,12 @@ class RPCServer:
         except asyncio.CancelledError:
             await self._join()
 
-    async def _join(self) -> None:
+    async def _join(self):
         for t,q in self._tasks.values():
             t.cancel()
         await asyncio.wait([t for t,q in self._tasks.values()], timeout=self.timeout)
 
-    async def _on_data(self, data: bytes) -> None:
+    async def _on_data(self, data: bytes):
         msg = msgpack.unpackb(data, use_list=self._use_list)
         msgtype = msg[0]
 
