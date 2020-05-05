@@ -16,10 +16,10 @@ class RPCServer:
     def __init__(self, ws, handler, *, timeout=10, use_list=False):
         self.ws = ws
         self.timeout = timeout
+        self.handler = handler
         self._packer = msgpack.Packer(use_bin_type=True)
         self._use_list = use_list
         self._tasks: Dict[int, Tuple[asyncio.Task, Optional[wsrpc.RPCStream]]] = {}
-        self.handler = handler
 
     async def run(self):
         async for data in self.ws:

@@ -1,7 +1,7 @@
 import asyncio, websockets
 import sys
 sys.path.append('../')
-from wsrpc import RPCClient
+from wsmprpc import RPCClient
 
 async def main():
     async with websockets.connect('ws://localhost:8000') as ws:

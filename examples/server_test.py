@@ -2,7 +2,7 @@ import asyncio
 from sanic import Sanic
 import sys
 sys.path.append('../')
-from wsrpc import RPCServer
+from wsmprpc import RPCServer
 
 class SimpleHandler:
 
