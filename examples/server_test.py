@@ -6,6 +6,10 @@ from wsmprpc import RPCServer
 
 class SimpleHandler:
 
+    # rpc method name cannot start with underscore
+    def _private_method(self):
+        pass
+
     # non-async rpc can't be cancelled
     def div(self, a, b):
         return a / b

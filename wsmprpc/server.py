@@ -44,7 +44,8 @@ class RPCServer:
         if msgtype == mtype.REQUEST or msgtype == mtype.NOTIFY:
             msgid, method_name, params = msg[1:]
 
-            if method:= getattr(self.handler, method_name, None):
+            method = getattr(self.handler, method_name, None)
+            if method_name and method_name[0]!='_' and method:
                 kwoa = inspect.getfullargspec(method).kwonlyargs
                 if kwoa and kwoa[-1]=='request_stream':
                     q_size = getattr(self.handler, 'q_size', {}).get(method_name, getattr(self.handler, 'default_q_size', 0))
@@ -82,8 +83,8 @@ class RPCServer:
 
         elif msgtype == mtype.REQUEST_CANCEL:
             msgid = msg[1]
-            if t:= self._tasks.get(msgid):
-                t[0].cancel()
+            t = self._tasks.get(msgid)
+            t and t[0].cancel()
 
         else:
             raise RPCError("unknown msgtype")

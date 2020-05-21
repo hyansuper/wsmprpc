@@ -8,7 +8,8 @@ class RPCStream(asyncio.Queue):
         return self
 
     async def __anext__(self):
-        if isinstance(d:= await self.get(), Exception):
+        d = await self.get()
+        if isinstance(d, Exception):
             raise d
         else:
             return d
