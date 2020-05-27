@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import functools
-import inspect
+from collections import Iterable
 from . import msg_type as mtype
 import msgpack
 from .rpc_stream import RPCStream
@@ -108,11 +108,11 @@ class RPCClient:
         await self.ws.send(self._packer.pack((mtype.REQUEST_CANCEL, msgid)))
 
     async def _req_iter(self, msgid, iter):
-        if inspect.isasyncgen(iter):
-            async for i in iter:
+        if isinstance(iter, Iterable):
+            for i in iter:
                 await self._send_stream_chunck(msgid, i)
         else:
-            for i in iter:
+            async for i in iter:
                 await self._send_stream_chunck(msgid, i)
         await self._send_stream_end(msgid)
 
