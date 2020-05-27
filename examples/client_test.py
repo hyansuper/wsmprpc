@@ -1,6 +1,4 @@
 import asyncio, websockets
-import sys
-sys.path.append('../')
 from wsmprpc import RPCClient
 
 async def main():
@@ -25,7 +23,7 @@ async def main():
         print(await stub.sum(request_stream=range(1, 3)))
 
         # get response-streaming
-        async for i in stub.repeat('bla', 4):
+        async for i in stub.repeat('bla...', 4):
             print(i)
 
         # combine request-streaming and response-streaming
