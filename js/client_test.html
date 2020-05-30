@@ -3,10 +3,30 @@
 <script src="client.js"></script>
 <script>
 
-ws=new WebSocket('ws://192.168.1.100/rpc');
-ws.onopen=async function(e){
-    client=new RPCClient(ws)
-    await client.rpc('fill',[[255,0,0]])
+ws=new WebSocket('ws://192.168.1.100:8000/');
+
+ws.onopen = async function(e) {
+
+    var stub = new RPCClient(ws)
+
+    // normal rpc
+    console.log(await stub.rpc('div',[1,3]))
+
+    // cancellation
+    var sleep = stub.rpc('sleep', [3])
+    sleep.cancel()
+    sleep.then(console.log).catch(console.log('cancelled'))
+
+    // request streaming
+    console.log(await stub.rpc('sum', [], request_stream=[1,2,3]))
+
+    // response streaming
+    for await(var e of stub.rpc('repeat', ['bla...', 3]))
+        console.log(e)
+
+    // combine request and response streaming
+    for await(var e of stub.rpc('uppercase', [], request_stream=['hello', 'rpc']))
+        console.log(e)
 }
 
 </script>

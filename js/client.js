@@ -103,59 +103,66 @@ class RPCClient{
     static RESPONSE_CANCEL = 8
 
     constructor(ws) {
-        this._ws = ws;
+        this._ws = ws;        
         this._mid = 0;
         this._promises = {};
+        const that = this;
+        ws.onmessage = async function(data) {
+        	try{
+	            const msg = msgpack.deserialize(await data.data.arrayBuffer());
+	            const [msgtype, msgid] = msg.slice(0, 2);
+	            const p = that._promises[msgid.toString()];
+	            if (p)
+	                switch(msgtype) {
+	                    case RPCClient.RESPONSE:
+	                        const [err, result] = msg.slice(2);
+	                        if(err){
+	                            if(!p.cancelled) {
+	                                const e = new RPCError(err);
+	                                p.reject(e);
+	                                p._response_stream && p._response_stream.put_nowait(e, force=true);
+	                            }
+	                        }else{
+	                            p.resolve(result);
+	                        }
+	                        that._pop_promise(msgid);
+	                        break;
 
-        ws.onmessage = (data) => {
+	                    case RPCClient.RESPONSE_STREAM_CHUNCK:
+	                        p.response_stream.put_nowait(msg[2]);
+	                        break;
 
-            const msg = msgpack.deserialize(data);
-            [msgtype, msgid] = msg.slice(0, 2);
-            p = this._promises[msgid.toString()];
-            if (p)
-                switch(msgtype) {
-                    case RESPONSE:
-                        [err, result] = msg.slice(2);
-                        if(err)
-                            if(!p.cancelled) {
-                                e = new RPCError(err);
-                                p.reject(e);
-                                p._response_stream && p._response_stream.put_nowait(e, force=true);
-                            }
-                        else
-                            p.resolve(result);
-                        this.pop_promise(msgid);
-                        break;
-
-                    case RESPONSE_STREAM_CHUNCK:
-                        p.response_stream.put_nowait(msg[2]);
-                        break;
-
-                    case RESPONSE_STREAM_END:
-                        p.response_stream.put_nowait(new StopIteration());
-                        p.resolve();
-                        this.pop_promise(msgid);
-                        break;                        
-                }            
+	                    case RPCClient.RESPONSE_STREAM_END:
+	                        p.response_stream.put_nowait(new StopIteration());
+	                        p.resolve();
+	                        that._pop_promise(msgid);
+	                        break;                        
+	                }
+	         } catch (e) {
+	         	console.error(e)
+	         }            
         }
     }
 
     rpc(method, params, request_stream=null) {
-        var msgid = this._next_msgid();
-        var rj={}
-        var p = new RPCFuture((resolve, reject)=>{
+        const msgid = this._next_msgid();
+        const rj={}
+        const p = new RPCFuture((resolve, reject)=>{
             rj.resolve=resolve;
             rj.reject=reject;
             this._send_request(msgid, method, params);
             if (request_stream){
-                if(typeof request_stream[Symbol.iterator] === 'function')
-                    for(e of request_stream)
+                if(typeof request_stream[Symbol.iterator] === 'function'){
+                    for(var e of request_stream)
                         this._send_stream_chunck(msgid, e)
-                else if(typeof request_stream[Symbol.asyncIterator] === 'function')
+                    this._send_stream_end(msgid)
+                }else if(typeof request_stream[Symbol.asyncIterator] === 'function'){
                     (async function(){
-                        for await(e of request_stream)
+                        for await(var e of request_stream)
                             this._send_stream_chunck(msgid, e)
+                        this._send_stream_end(msgid)
                     })()
+                }
             }
         }, msgid, this);
         p._rj = rj;
@@ -164,9 +171,9 @@ class RPCClient{
     }
 
     _cancel(msgid) {
-        const p = this.pop_promise(msgid);
+        const p = this._pop_promise(msgid);
         if(p) {
-            e = new RPCError('Cancelled by client')
+            const e = new RPCError('Cancelled by client')
             p.reject(e)
             p._response_stream && p._response_stream.put_nowait(e, force=true)
         }
@@ -174,19 +181,19 @@ class RPCClient{
     }
 
     _send_cancel(msgid) {
-        this._ws.send(msgpack.serialize([this.REQUEST_CANCEL, msgid]))
+        this._ws.send(msgpack.serialize([RPCClient.REQUEST_CANCEL, msgid]))
     }
 
     _send_stream_chunck(msgid, chunck) {
-        this._ws.send(msgpack.serialize([this.REQUEST_STREAM_CHUNCK, msgid, chunck]))
+        this._ws.send(msgpack.serialize([RPCClient.REQUEST_STREAM_CHUNCK, msgid, chunck]))
     }
 
     _send_stream_end(msgid) {
-        this._ws.send(msgpack.serialize([this.REQUEST_STREAM_END, msgid]))
+        this._ws.send(msgpack.serialize([RPCClient.REQUEST_STREAM_END, msgid]))
     }
 
     _send_request(msgid, method, params) {
-        this._ws.send(msgpack.serialize([this.REQUEST, msgid, method, params]))
+        this._ws.send(msgpack.serialize([RPCClient.REQUEST, msgid, method, params]))
     }
 
     _pop_promise(msgid) {
@@ -202,4 +209,8 @@ class RPCClient{
         return this.mid;
     }
 
+}
+
+function sleep(sec){
+	return new Promise((r,j)=>{setTimeout(r,sec*1000)})
 }
