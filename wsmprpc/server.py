@@ -39,10 +39,10 @@ class RPCServer:
 
     async def _on_data(self, data: bytes):
         msg = msgpack.unpackb(data, use_list=self._use_list)
-        msgtype = msg[0]
+        msgtype, msgid = msg[:2]
 
         if msgtype == mtype.REQUEST or msgtype == mtype.NOTIFY:
-            msgid, method_name, params = msg[1:]
+            method_name, params = msg[2:]
 
             method = getattr(self.handler, method_name, None)
             if method_name and method_name[0]!='_' and method:
@@ -75,14 +75,12 @@ class RPCServer:
                 await self._send_error(msgid, f'{method_name} method not found.')
 
         elif msgtype == mtype.REQUEST_STREAM_CHUNCK:
-            msgid, chunck = msg[1:]
-            self._tasks[msgid][1].put_nowait(chunck)
+            self._tasks[msgid][1].put_nowait(msg[2])
 
         elif msgtype == mtype.REQUEST_STREAM_END:
-            self._tasks[msg[1]][1].put_nowait(StopAsyncIteration())
+            self._tasks[msgid][1].put_nowait(StopAsyncIteration())
 
         elif msgtype == mtype.REQUEST_CANCEL:
-            msgid = msg[1]
             t = self._tasks.get(msgid)
             t and t[0].cancel()
 

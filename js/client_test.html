@@ -1,0 +1,12 @@
+
+<script src="msgpack.min.js"></script>
+<script src="client.js"></script>
+<script>
+
+ws=new WebSocket('ws://192.168.1.100/rpc');
+ws.onopen=async function(e){
+    client=new RPCClient(ws)
+    await client.rpc('fill',[[255,0,0]])
+}
+
+</script>

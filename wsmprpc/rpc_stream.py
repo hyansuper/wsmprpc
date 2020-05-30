@@ -14,6 +14,9 @@ class RPCStream(asyncio.Queue):
         else:
             return d
 
+    async def close(self):
+        await self.put(StopAsyncIteration())
+
     def force_put_nowait(self, o):
         # if queue is full, then pop out an element to make room
         self.full() and self.get_nowait()

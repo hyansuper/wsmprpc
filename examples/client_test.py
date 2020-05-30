@@ -22,7 +22,7 @@ async def main():
         # request-streaming
         print(await stub.sum(request_stream=range(1, 3)))
 
-        # get response-streaming
+        # response-streaming
         async for i in stub.repeat('bla...', 4):
             print(i)
 

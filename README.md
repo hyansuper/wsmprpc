@@ -6,7 +6,7 @@ Python msgpack RPC over websocket
 
 One of the advantages of [msgpack](https://msgpack.org/) over json is that msgpack can carry binary data, that makes it very useful for streaming.
 
-wsmpRPC implements similar functions to that of [gRPC](https://grpc.io/docs/tutorials/basic/python/), supporting not only one-shot RPC, but also **bidirectional streaming** and **cancellation**, without the trouble to define .proto files, and it's asynchronous!
+wsmpRPC implements similar functions to that of [gRPC](https://grpc.io/docs/tutorials/basic/python/), supporting not only one-shot RPC, but also **bidirectional streaming** and **cancellation**, without the trouble to define .proto files. And it's **asynchronous**! wsmpRPC can be easily integrated into any web frameworks that support async websocket.
 
 ## Install
 
@@ -97,7 +97,7 @@ async def main():
         # request-streaming
         print(await stub.sum(request_stream=range(1, 3)))
 
-        # get response-streaming
+        # response-streaming
         async for i in stub.repeat('bla...', 4):
             print(i)
 
