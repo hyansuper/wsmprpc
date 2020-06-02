@@ -8,7 +8,7 @@ with open('./requirements.txt', 'r') as f:
 
 setuptools.setup(
     name="wsmprpc",
-    version="0.1",
+    version="0.2",
     author="Huang Yan",
     author_email="hyansuper@foxmail.com",
     description="python msgpack RPC over websocket",
