@@ -11,15 +11,15 @@ logger = logging.getLogger(__name__)
 
 class RPCFuture(asyncio.Future):
 
-    def __init__(self, msgid, start, cancel, q_size=0):
+    def __init__(self, msgid, start, cancel, q_size):
         asyncio.Future.__init__(self)
+        self._msgid = msgid
         self._start = start
         self._response_stream = None
         self._q_size = q_size
         self._cancel = cancel
-        self._msgid = msgid
-        self._iter_task = None
-        self.add_done_callback(lambda f: self._iter_task and self._iter_task.cancel())
+        self._task = None
+        self.add_done_callback(lambda f: self._task and self._task.cancel())
 
     @property
     def response_stream(self):
@@ -37,15 +37,15 @@ class RPCFuture(asyncio.Future):
         self.cancel()
 
     def __aiter__(self):
-        if not self._iter_task:
-            self._iter_task = asyncio.create_task(self._start())
+        if not self._task:
+            self._task = asyncio.create_task(self._start)
         return self.response_stream
 
     def __await__(self):
         # await self._coro
         # self._coro.__await__()
-        if not self._iter_task:
-            self._iter_task = asyncio.create_task(self._start())
+        if not self._task:
+            self._task = asyncio.create_task(self._start)
         return asyncio.Future.__await__(self)
 
 
@@ -124,8 +124,8 @@ class RPCClient:
         async def start():
             await self._send_request(msgid, method, args or kwargs)
             if req_iter:
-                asyncio.create_task(self._req_iter(msgid, req_iter))
+                await self._req_iter(msgid, req_iter)
 
-        fut = RPCFuture(msgid=msgid, start=start, cancel=self._send_cancel)
+        fut = RPCFuture(msgid=msgid, start=start(), cancel=self._send_cancel, q_size=kwargs.pop('q_size', 0))
         self._tasks[msgid] = fut
         return fut

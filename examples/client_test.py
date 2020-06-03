@@ -1,4 +1,6 @@
 import asyncio, websockets
+import sys
+sys.path.append('..')
 from wsmprpc import RPCClient
 
 async def main():

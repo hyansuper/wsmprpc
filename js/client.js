@@ -210,7 +210,3 @@ class RPCClient{
     }
 
 }
-
-function sleep(sec){
-	return new Promise((r,j)=>{setTimeout(r,sec*1000)})
-}
