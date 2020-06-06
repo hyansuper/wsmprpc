@@ -85,7 +85,7 @@ class RPCServer:
             t and t[0].cancel()
 
         else:
-            raise RPCError("unknown msgtype")
+            raise RPCServerError("unknown msgtype")
 
     def _call(self, method, params, q):
         ptype = type(params)

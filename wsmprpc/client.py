@@ -29,7 +29,7 @@ class RPCFuture(asyncio.Future):
 
     def cancel(self):
         if not self.done():
-            self._response_stream and self._response_stream.force_put_nowait(RPCError('Cancelled by client.'))
+            self._response_stream and self._response_stream.force_put_nowait(RPCClientError('Cancelled by client.'))
             asyncio.create_task(self._cancel(self._msgid))
         return asyncio.Future.cancel(self)
 
@@ -41,13 +41,13 @@ class RPCFuture(asyncio.Future):
             self._task = asyncio.create_task(self._start)
 
     def __aiter__(self):
-        self.request_nowait()
+        self.request()
         return self.response_stream
 
     def __await__(self):
         # await self._coro
         # self._coro.__await__()
-        self.request_nowait()
+        self.request()
         return asyncio.Future.__await__(self)
 
 
@@ -77,7 +77,7 @@ class RPCClient:
                     if t:
                         if err:
                             if not t.done():
-                                e = RPCError(err)
+                                e = RPCServerError(err)
                                 t.set_exception(e)
                                 t._response_stream and t._response_stream.force_put_nowait(e)
                         else:
