@@ -36,16 +36,18 @@ class RPCFuture(asyncio.Future):
     def __del__(self):
         self.cancel()
 
-    def __aiter__(self):
+    def request(self):
         if not self._task:
             self._task = asyncio.create_task(self._start)
+
+    def __aiter__(self):
+        self.request_nowait()
         return self.response_stream
 
     def __await__(self):
         # await self._coro
         # self._coro.__await__()
-        if not self._task:
-            self._task = asyncio.create_task(self._start)
+        self.request_nowait()
         return asyncio.Future.__await__(self)
 
 
