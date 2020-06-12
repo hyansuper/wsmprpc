@@ -39,7 +39,7 @@ class Queue {
     }
 
     close() {
-        this.put_nowait(new StopIteration())
+        this.put_nowait(new StopIteration(), true)
     }
 
     next() {
@@ -133,7 +133,7 @@ class RPCClient{
 	                        break;
 
 	                    case RPCClient.RESPONSE_STREAM_END:
-	                        p.response_stream.put_nowait(new StopIteration());
+	                        p.response_stream.put_nowait(new StopIteration(), true);
 	                        p.resolve();
 	                        that._pop_promise(msgid);
 	                        break;                        
