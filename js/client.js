@@ -120,7 +120,7 @@ class RPCClient{
 	                            if(!p.cancelled) {
 	                                const e = new RPCError(err);
 	                                p.reject(e);
-	                                p._response_stream && p._response_stream.put_nowait(e, force=true);
+	                                p._response_stream && p._response_stream.put_nowait(e, true);
 	                            }
 	                        }else{
 	                            p.resolve(result);
@@ -175,7 +175,7 @@ class RPCClient{
         if(p) {
             const e = new RPCError('Cancelled by client')
             p.reject(e)
-            p._response_stream && p._response_stream.put_nowait(e, force=true)
+            p._response_stream && p._response_stream.put_nowait(e, true)
         }
         this._send_cancel(msgid)
     }
