@@ -43,8 +43,8 @@ class Queue {
     }
 
     next() {
-        return this.get().then(v=>{
-            if(v instanceof Error) throw v;
+        return this.get().then(v=>{            
+            if(v instanceof Error) throw v;            
             return (v instanceof StopIteration)?{done:true}:{done:false, value:v}
         })
     }
@@ -203,10 +203,10 @@ class RPCClient{
     }
 
     _next_msgid() {
-        if(this.mid > 2^10)
-            this.mid = 0;
-        this.mid += 1;
-        return this.mid;
+        if(this._mid > 2**20)
+            this._mid = 0;
+        this._mid += 1;
+        return this._mid;
     }
 
 }
