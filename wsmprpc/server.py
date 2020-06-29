@@ -75,10 +75,10 @@ class RPCServer:
                 await self._send_error(msgid, f'{method_name} method not found.')
 
         elif msgtype == mtype.REQUEST_STREAM_CHUNCK:
-            self._tasks[msgid][1].put_nowait(msg[2])
+            self._tasks[msgid][1].force_put_nowait(msg[2])
 
         elif msgtype == mtype.REQUEST_STREAM_END:
-            self._tasks[msgid][1].put_nowait(StopAsyncIteration())
+            self._tasks[msgid][1].force_put_nowait(StopAsyncIteration())
 
         elif msgtype == mtype.REQUEST_CANCEL:
             t = self._tasks.get(msgid)

@@ -84,7 +84,7 @@ class RPCClient:
                             t.set_result(result)
 
                 elif msgtype == mtype.RESPONSE_STREAM_CHUNCK:
-                    self._tasks[msgid].response_stream.put_nowait(msg[2])
+                    self._tasks[msgid].response_stream.force_put_nowait(msg[2])
 
                 elif msgtype == mtype.RESPONSE_STREAM_END:
                     t = self._tasks.pop(msgid, None)

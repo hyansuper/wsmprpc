@@ -8,7 +8,7 @@ with open('./requirements.txt', 'r') as f:
 
 setuptools.setup(
     name="wsmprpc",
-    version="0.2",
+    version="1.0.0",
     author="Huang Yan",
     author_email="hyansuper@foxmail.com",
     description="python msgpack RPC over websocket",
@@ -19,7 +19,7 @@ setuptools.setup(
     packages=['wsmprpc'],
     install_requires=requirements,
     classifiers=(
-        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.7",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ),
