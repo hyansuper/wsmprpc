@@ -11,11 +11,11 @@ logger = logging.getLogger(__name__)
 
 class RPCFuture(asyncio.Future):
 
-    def __init__(self, msgid, start, cancel, q_size):
+    def __init__(self, msgid, start, cancel, q_size, response_stream):
         asyncio.Future.__init__(self)
         self._msgid = msgid
         self._start = start
-        self._response_stream = None
+        self._response_stream = response_stream
         self._q_size = q_size
         self._cancel = cancel
         self._task = None
@@ -124,10 +124,10 @@ class RPCClient:
         msgid = self._next_msgid()
         req_iter = kwargs.pop('request_stream', None)
         async def start():
-            await self._send_request(msgid, method, args or kwargs)
+            await self._send_request(msgid, method, args)
             if req_iter:
                 await self._req_iter(msgid, req_iter)
 
-        fut = RPCFuture(msgid=msgid, start=start(), cancel=self._send_cancel, q_size=kwargs.pop('q_size', 0))
+        fut = RPCFuture(msgid=msgid, start=start(), cancel=self._send_cancel, q_size=kwargs.pop('q_size', 0), response_stream=kwargs.pop('response_stream', None))
         self._tasks[msgid] = fut
         return fut
