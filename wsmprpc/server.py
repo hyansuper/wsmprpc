@@ -99,7 +99,9 @@ class RPCServer:
     async def _on_request(self, msgid: int, method: Callable, params: Union[list, dict], q: Optional[RPCStream]) -> None:
         try:
             ret = await self._call(method, params, q)
-        except (asyncio.CancelledError, Exception) as e:
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
             await self._send_error(msgid, str(e) or e.__class__.__name__)
         else:
             await self._send_response(msgid, ret)
@@ -108,7 +110,9 @@ class RPCServer:
         try:
             async for resp in self._call(method, params, q):
                 await self._send_stream_chunck(msgid, resp)
-        except (asyncio.CancelledError, Exception) as e:
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
             await self._send_error(msgid, str(e) or e.__class__.__name__)
         else:
             await self._send_stream_end(msgid)
