@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import logging
 from typing import Dict, Tuple, List, Optional, Union, Callable
+from websockets.exceptions import ConnectionClosedOK
 from .rpc_stream import RPCStream
 from . import msg_type as mtype
 from .error import *
@@ -22,12 +23,15 @@ class RPCServer:
         self._tasks: Dict[int, Tuple[asyncio.Task, Optional[wsrpc.RPCStream]]] = {}
 
     async def run(self):
-        async for data in self.ws:
-            try:
-                await self._on_data(data)
-            except Exception as e:
-                logger.exception(e)
         try:
+            async for data in self.ws:
+                try:
+                    await self._on_data(data)
+                except Exception as e:
+                    logger.exception(e)
+        except: # websocket closed <concurrent.futures._base.CancelledError>
+            pass
+        try: # cancel all tasks
             await asyncio.shield(self._join())
         except asyncio.CancelledError:
             await self._join()
@@ -99,10 +103,11 @@ class RPCServer:
     async def _on_request(self, msgid: int, method: Callable, params: Union[list, dict], q: Optional[RPCStream]) -> None:
         try:
             ret = await self._call(method, params, q)
-        except asyncio.CancelledError:
-            pass
         except Exception as e:
-            await self._send_error(msgid, str(e) or e.__class__.__name__)
+            try:
+                await self._send_error(msgid, str(e) or e.__class__.__name__)
+            except ConnectionClosedOK:
+                pass
         else:
             await self._send_response(msgid, ret)
 
@@ -110,10 +115,11 @@ class RPCServer:
         try:
             async for resp in self._call(method, params, q):
                 await self._send_stream_chunck(msgid, resp)
-        except asyncio.CancelledError:
-            pass
         except Exception as e:
-            await self._send_error(msgid, str(e) or e.__class__.__name__)
+            try:
+                await self._send_error(msgid, str(e) or e.__class__.__name__)
+            except ConnectionClosedOK:
+                pass
         else:
             await self._send_stream_end(msgid)
 
@@ -129,4 +135,3 @@ class RPCServer:
 
     async def _send_stream_end(self, msgid: int) -> None:
         await self.ws.send(self._packer.pack((mtype.RESPONSE_STREAM_END, msgid)))
-
