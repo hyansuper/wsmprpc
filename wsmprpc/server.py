@@ -29,12 +29,15 @@ class RPCServer:
                     await self._on_data(data)
                 except Exception as e:
                     logger.exception(e)
-        except: # websocket closed <concurrent.futures._base.CancelledError>
-            pass
-        try: # cancel all tasks
-            await asyncio.shield(self._join())
-        except asyncio.CancelledError:
-            await self._join()
+        # don't catch websocket closed exception <concurrent.futures._base.CancelledError>
+        # but let the caller handle it
+        # except:
+        #     pass
+        finally:
+            try: # cancel all tasks
+                await asyncio.shield(self._join())
+            except asyncio.CancelledError:
+                await self._join()
 
     async def _join(self):
         for t,q in self._tasks.values():
