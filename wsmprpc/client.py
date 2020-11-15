@@ -74,12 +74,11 @@ class RPCClient:
                 if msgtype == mtype.RESPONSE:
                     err, result = msg[2:]
                     t = self._tasks.pop(msgid, None)
-                    if t:
+                    if t and not t.done():
                         if err:
-                            if not t.done():
-                                e = RPCServerError(err)
-                                t.set_exception(e)
-                                t._response_stream and t._response_stream.force_put_nowait(e)
+                            e = RPCServerError(err)
+                            t.set_exception(e)
+                            t._response_stream and t._response_stream.force_put_nowait(e)
                         else:
                             t.set_result(result)
 
