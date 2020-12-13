@@ -2,5 +2,6 @@
 *.py[cod]
 build/
 dist/
+.eggs/
 *.egg-info/
 js/c.html

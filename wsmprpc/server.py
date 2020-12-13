@@ -40,9 +40,11 @@ class RPCServer:
                 await self._join()
 
     async def _join(self):
-        for t,q in self._tasks.values():
-            t.cancel()
-        await asyncio.wait([t for t,q in self._tasks.values()], timeout=self.timeout)
+        remains = self._tasks.values()
+        if remains:
+            for t,q in remains:
+                t.cancel()
+            await asyncio.wait([t for t,q in self._tasks.values()], timeout=self.timeout)
 
     async def _on_data(self, data: bytes):
         msg = msgpack.unpackb(data, use_list=self._use_list)
