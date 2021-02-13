@@ -1,7 +1,5 @@
 import asyncio
-from sanic import Sanic
-import sys
-sys.path.append('..')
+import websockets
 from wsmprpc import RPCServer
 
 class SimpleHandler:
@@ -43,10 +41,11 @@ class SimpleHandler:
             yield word.upper()
 
 
-app = Sanic(__name__)
 
-@app.websocket("/")
-async def home(request, ws):
+async def handle_ws(ws, path):
     await RPCServer(ws, SimpleHandler()).run()
 
-app.run(host="0.0.0.0", port=8000)
+ws_server = websockets.serve(handle_ws, "localhost", 8000)
+
+asyncio.get_event_loop().run_until_complete(ws_server)
+asyncio.get_event_loop().run_forever()
