@@ -30,7 +30,7 @@ class RPCFuture(asyncio.Future):
     def cancel(self):
         if not self.done():
             self._response_stream and self._response_stream.force_put_nowait(RPCClientError('Cancelled by client.'))
-            asyncio.create_task(self._cancel(self._msgid))
+            self._cancel_task = asyncio.create_task(self._cancel(self._msgid))
         return asyncio.Future.cancel(self)
 
     def __del__(self):
