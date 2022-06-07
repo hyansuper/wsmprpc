@@ -27,3 +27,4 @@
 * json rpc spec: https://www.jsonrpc.org/specification
 * asyncio: https://github.com/crazyguitar/pysheeet/blob/master/docs/notes/python-asyncio.rst
 * `__await__`: https://mdk.fr/blog/python-coroutines-with-async-and-await.html
+* use coroutine in `__await__`: https://stackoverflow.com/questions/33409888/how-can-i-await-inside-future-like-objects-await

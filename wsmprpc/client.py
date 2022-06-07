@@ -18,8 +18,9 @@ class RPCFuture(asyncio.Future):
         self._response_stream = response_stream
         self._q_size = q_size
         self._cancel = cancel
-        self._task = None
-        self.add_done_callback(lambda f: self._task and self._task.cancel())
+        self._request_sent = False
+        # self._task = None
+        # self.add_done_callback(lambda f: self._task and self._task.cancel())
 
     @property
     def response_stream(self):
@@ -36,19 +37,28 @@ class RPCFuture(asyncio.Future):
     def __del__(self):
         self.cancel()
 
-    def request(self):
-        if not self._task:
-            self._task = asyncio.create_task(self._start)
+    # def request(self):
+    #     if not self._task:
+    #         self._task = asyncio.create_task(self._start)
 
     def __aiter__(self):
-        self.request()
-        return self.response_stream
+        # self.request()
+        # return self.response_stream
+        return self
+
+    async def __anext__(self):
+        if not self._request_sent:
+            self._request_sent = True
+            await self._start
+        return await self.response_stream.__anext__()
 
     def __await__(self):
-        # await self._coro
-        # self._coro.__await__()
-        self.request()
-        return asyncio.Future.__await__(self)
+        # self.request()
+        # return asyncio.Future.__await__(self)
+        if not self._request_sent:
+            self._request_sent = True
+            yield from self._start.__await__()
+        return (yield from asyncio.Future.__await__(self))
 
 
 class RPCClient:

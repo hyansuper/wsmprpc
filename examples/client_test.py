@@ -2,7 +2,7 @@ import asyncio, websockets
 from wsmprpc import RPCClient
 
 async def main():
-    async with websockets.connect('ws://localhost:8000') as ws:
+    async with websockets.connect('ws://localhost:8001') as ws:
         stub = RPCClient(ws)
 
         # normal rpc
@@ -20,7 +20,7 @@ async def main():
             print('cancelled')
 
         # request-streaming
-        print(await stub.sum(request_stream=range(1, 3)))
+        print(await stub.sum(request_stream=[1,2,3]))
 
         # response-streaming
         async for i in stub.repeat('bla...', 4):

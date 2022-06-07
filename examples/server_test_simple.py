@@ -45,7 +45,7 @@ class SimpleHandler:
 async def handle_ws(ws, path):
     await RPCServer(ws, SimpleHandler()).run()
 
-ws_server = websockets.serve(handle_ws, "localhost", 8000)
+ws_server = websockets.serve(handle_ws, "localhost", 8001)
 
 asyncio.get_event_loop().run_until_complete(ws_server)
 asyncio.get_event_loop().run_forever()
