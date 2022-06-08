@@ -24,9 +24,15 @@ class RPCServer:
 
     async def run(self):
         try:
+            unpacker = msgpack.Unpacker(None, raw=False, use_list=self._use_list)
             async for data in self.ws:
+                unpacker.feed(data)
                 try:
-                    await self._on_data(data)
+                    msg = unpacker.unpack()                    
+                except msgpack.exceptions.OutOfData:
+                    continue
+                try:
+                    await self._on_msg(msg)
                 except Exception as e:
                     logger.exception(e)
         # don't catch websocket closed exception <concurrent.futures._base.CancelledError>
@@ -46,8 +52,7 @@ class RPCServer:
                 t.cancel()
             await asyncio.wait([t for t,q in self._tasks.values()], timeout=self.timeout)
 
-    async def _on_data(self, data: bytes):
-        msg = msgpack.unpackb(data, use_list=self._use_list)
+    async def _on_msg(self, msg: object):
         msgtype, msgid = msg[:2]
 
         if msgtype == mtype.REQUEST or msgtype == mtype.NOTIFY:

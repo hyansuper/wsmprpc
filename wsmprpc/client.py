@@ -77,9 +77,14 @@ class RPCClient:
         return self._mid
 
     async def _run(self):
+        unpacker = msgpack.Unpacker(None, raw=False, use_list=self._use_list)
         async for data in self.ws:
             try:
-                msg = msgpack.unpackb(data, use_list=self._use_list)
+                unpacker.feed(data)
+                try:
+                    msg = unpacker.unpack()
+                except msgpack.exceptions.OutOfData:
+                    continue
                 msgtype, msgid = msg[:2]
                 if msgtype == mtype.RESPONSE:
                     err, result = msg[2:]
