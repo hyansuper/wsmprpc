@@ -3,7 +3,7 @@
 <script src="client.js"></script>
 <script>
 
-ws=new WebSocket('ws://192.168.1.100:8000/');
+ws=new WebSocket('ws://localhost:8000/');
 
 ws.onopen = async function(e) {
 
@@ -27,6 +27,8 @@ ws.onopen = async function(e) {
     // combine request and response streaming
     for await(var e of stub.rpc('uppercase', [], request_stream=['hello', 'rpc']))
         console.log(e)
+
+    console.log(stub.rpc_doc)
 }
 
 </script>

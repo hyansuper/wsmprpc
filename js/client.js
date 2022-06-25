@@ -110,6 +110,10 @@ class RPCClient{
         ws.onmessage = async function(data) {
         	try{
 	            const msg = msgpack.deserialize(await data.data.arrayBuffer());
+                if (!that._doc_ls){
+                    that._doc_ls = msg;
+                    return;
+                }
 	            const [msgtype, msgid] = msg.slice(0, 2);
 	            const p = that._promises[msgid.toString()];
 	            if (p)
@@ -142,6 +146,10 @@ class RPCClient{
 	         	console.error(e)
 	         }            
         }
+    }
+
+    get rpc_doc() {
+        return this._doc_ls;
     }
 
     rpc(method, params, request_stream=null) {

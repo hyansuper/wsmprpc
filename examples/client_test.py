@@ -2,7 +2,7 @@ import asyncio, websockets
 from wsmprpc import RPCClient
 
 async def main():
-    async with websockets.connect('ws://localhost:8001') as ws:
+    async with websockets.connect('ws://localhost:8000') as ws:
         stub = RPCClient(ws)
 
         # normal rpc

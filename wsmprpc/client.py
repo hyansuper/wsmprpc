@@ -19,8 +19,6 @@ class RPCFuture(asyncio.Future):
         self._q_size = q_size
         self._cancel = cancel
         self._request_sent = False
-        # self._task = None
-        # self.add_done_callback(lambda f: self._task and self._task.cancel())
 
     @property
     def response_stream(self):
@@ -28,47 +26,48 @@ class RPCFuture(asyncio.Future):
             self._response_stream = RPCStream(self._q_size)
         return self._response_stream
 
+    # not thread-safe
     def cancel(self):
-        if not self.done():
+        if not self.done() and self._request_sent:
             self._response_stream and self._response_stream.force_put_nowait(RPCClientError('Cancelled by client.'))
-            self._cancel_task = asyncio.create_task(self._cancel(self._msgid))
+            self._cancel_task = asyncio.create_task(self._cancel(self._msgid))            
         return asyncio.Future.cancel(self)
 
     def __del__(self):
         self.cancel()
 
-    # def request(self):
-    #     if not self._task:
-    #         self._task = asyncio.create_task(self._start)
-
     def __aiter__(self):
-        # self.request()
-        # return self.response_stream
         return self
 
     async def __anext__(self):
-        if not self._request_sent:
+        if not (self.cancelled() or self._request_sent):
             self._request_sent = True
-            await self._start
+            await self._start()
         return await self.response_stream.__anext__()
 
     def __await__(self):
-        # self.request()
-        # return asyncio.Future.__await__(self)
-        if not self._request_sent:
+        if not (self.cancelled() or self._request_sent):
             self._request_sent = True
-            yield from self._start.__await__()
+            yield from self._start().__await__()
         return (yield from asyncio.Future.__await__(self))
 
 
 class RPCClient:
-    def __init__(self, ws, *, use_list=False):
+    def __init__(self, ws, *, use_list=False, use_fn_num=False):
         self.ws = ws
-        self._use_list = False
+        self._use_list = use_list
+        self._use_fn_num = use_fn_num
         self._packer = msgpack.Packer(use_bin_type=True)
         self._mid = 0
         self._tasks = {}
+        self._doc_ls = None        
+        self._fnames = None
+        self._rpc_doc_fut = asyncio.Future()
         asyncio.create_task(self._run())
+
+    @property
+    def rpc_doc(self):
+        return self._doc_ls
 
     def _next_msgid(self):
         if self._mid >= 2**20:
@@ -84,6 +83,11 @@ class RPCClient:
                 try:
                     msg = unpacker.unpack()
                 except msgpack.exceptions.OutOfData:
+                    continue                
+                if self._fnames is None:
+                    self._doc_ls = msg
+                    self._fnames = [sig[sig.find('def')+4: sig.index('(')] for sig, doc in self._doc_ls]     
+                    self._rpc_doc_fut.set_result(None)
                     continue
                 msgtype, msgid = msg[:2]
                 if msgtype == mtype.RESPONSE:
@@ -106,8 +110,12 @@ class RPCClient:
                         t.response_stream.force_put_nowait(StopAsyncIteration())
                         t.set_result(None)
 
+                elif msgtype == mtype.RESPONSE_API:
+                    self._rpc_doc_fut.set_result(msg[-1])
+
             except Exception as e:
                 logger.exception(str(e))
+        
 
 
     def __getattr__(self, method):
@@ -132,16 +140,20 @@ class RPCClient:
         else:
             async for i in iter:
                 await self._send_stream_chunck(msgid, i)
-        await self._send_stream_end(msgid)
+        await self._send_stream_end(msgid)   
 
     def _request(self, method, *args, **kwargs):
         msgid = self._next_msgid()
         req_iter = kwargs.pop('request_stream', None)
         async def start():
+            nonlocal method
+            if self._use_fn_num:
+                if self._fnames is None:
+                    await self._rpc_doc_fut
+                method = self._fnames.index(method)
             await self._send_request(msgid, method, args)
             if req_iter:
                 await self._req_iter(msgid, req_iter)
-
-        fut = RPCFuture(msgid=msgid, start=start(), cancel=self._send_cancel, q_size=kwargs.pop('q_size', 0), response_stream=kwargs.pop('response_stream', None))
+        fut = RPCFuture(msgid=msgid, start=start, cancel=self._send_cancel, q_size=kwargs.pop('q_size', 0), response_stream=kwargs.pop('response_stream', None))
         self._tasks[msgid] = fut
         return fut
