@@ -1,6 +1,7 @@
+# see: https://docs.python.org/3/library/asyncio-stream.html#tcp-echo-server-using-streams
 import asyncio
-import sanic
-from wsmprpc import RPCServer
+from wsmprpc.server import RPCServer
+from tcp_socket_wrapper import tcp_socket_wrapper
 
 rpc_server = RPCServer()
 
@@ -46,14 +47,13 @@ async def uppercase(*, request_stream):
         yield word.upper()
 
 
-app = sanic.Sanic(__name__)
+async def handle_client(reader, writer):
+    async with tcp_socket_wrapper(reader, writer) as socket:
+        await rpc_server.run(socket)
 
-@app.websocket("/")
-async def home(request, ws):
-    await rpc_server.run(ws)
+async def main():
+    server = await asyncio.start_server(handle_client, 'localhost', 8000)
+    async with server:
+        await server.serve_forever()
 
-@app.route('/rpc_doc')
-async def rpc_doc(request):
-    return sanic.json(rpc_server.rpc_doc)
-
-app.run(host="0.0.0.0", port=8000)
+asyncio.run(main())

@@ -1,6 +1,6 @@
 import asyncio
-import websockets
-from wsmprpc import RPCServer
+import sanic
+from wsmprpc.server import RPCServer
 
 rpc_server = RPCServer()
 
@@ -45,10 +45,25 @@ async def uppercase(*, request_stream):
     async for word in request_stream:
         yield word.upper()
 
-async def handle_ws(ws, path):
-    await rpc_server.run(ws)
 
-ws_server = websockets.serve(handle_ws, "localhost", 8000)
+class _socket_wrapper:
+    def __init__(self, ws):
+        self.ws = ws
+    async def send(self, data):
+        return await self.ws.send(data)
+    async def __anext__(self):
+        return await self.ws.recv()
+    def __aiter__(self):
+        return self
 
-asyncio.get_event_loop().run_until_complete(ws_server)
-asyncio.get_event_loop().run_forever()
+app = sanic.Sanic(__name__)
+
+@app.websocket("/")
+async def home(request, ws):
+    await rpc_server.run(_socket_wrapper(ws))
+
+@app.route('/rpc_doc')
+async def rpc_doc(request):
+    return sanic.json(rpc_server.rpc_doc)
+
+app.run(host="0.0.0.0", port=8000)

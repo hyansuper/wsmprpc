@@ -1,16 +1,14 @@
 import asyncio
 import inspect
-import logging
 from collections import OrderedDict
 from typing import Dict, Tuple, List, Optional, Union, Callable
-from websockets.exceptions import ConnectionClosedOK
+import msgpack
 from .rpc_stream import RPCStream
 from . import msg_type as mtype
 from .error import *
 
-import msgpack
-
-logger = logging.getLogger(__name__)
+# import logging
+# logger = logging.getLogger(__name__)
 
 
 class RPCServer:
@@ -45,22 +43,20 @@ class RPCServer:
             self.ws = ws
         self._fn_list = list(self._rpc_fn.keys())
         unpacker = msgpack.Unpacker(None, raw=False, use_list=self._use_list)
-        try:            
+        try:
             await self.ws.send(self._packer.pack(self.rpc_doc))
-            # async for data in self.ws:
-            while True:
-                data = await self.ws.recv()
+            async for data in self.ws:
                 unpacker.feed(data)
-                try:
-                    msg = unpacker.unpack()                    
-                except msgpack.exceptions.OutOfData:
-                    continue
-                try:
+                while True:
+                    try:
+                        msg = unpacker.unpack()
+                    except msgpack.exceptions.OutOfData:
+                        break
+                    # try:
                     await self._on_msg(msg)
-                except Exception as e:
-                    logger.exception(e)
-        except ConnectionClosedOK:
-            pass
+                    # except Exception as e:
+                    #     logger.exception(e)
+
         finally:
             try: # cancel all tasks
                 await asyncio.shield(self._join())
@@ -79,8 +75,8 @@ class RPCServer:
 
         if msgtype == mtype.REQUEST or msgtype == mtype.NOTIFY:
             method_name, params = msg[2:]   
-            if isinstance(method_name, int):
-                method_name = self._fn_list[method_name] if 0<=method_name<len(self._fn_list) else None
+            if isinstance(method_name, int) and 0<=method_name<len(self._fn_list):
+                method_name = self._fn_list[method_name]
             method, q_size = self._rpc_fn.get(method_name, (None, 0))
             if method_name and method:
                 kwoa = inspect.getfullargspec(method).kwonlyargs

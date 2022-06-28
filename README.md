@@ -20,6 +20,10 @@ Python msgpack RPC over websocket
 [python](https://msgpack.org/) and [javascript](https://github.com/ygoe/msgpack.js) versions of msgpack 
 
 ## Examples
-* [server_test.py](https://github.com/hyansuper/wsmprpc/blob/master/examples/server_test.py)
-* [client_test.py](https://github.com/hyansuper/wsmprpc/blob/master/examples/client_test.py)
+* [websocket_simple_server.py](https://github.com/hyansuper/wsmprpc/blob/master/examples/websocket_simple_server.py)
+* [websocket_simple_client.py](https://github.com/hyansuper/wsmprpc/blob/master/examples/websocket_simple_client.py)
 * [client_test.html (javascript client)](https://github.com/hyansuper/wsmprpc/blob/master/js/client_test.html)
+
+Inface, you can transmit RPC via TCP socket, or any other socket as long as it has `async send(data)` method and supports `async for` iteration for receiving data.
+* [tcp_server.py](https://github.com/hyansuper/wsmprpc/blob/master/examples/tcp_server.py)
+* [tcp_client.py](https://github.com/hyansuper/wsmprpc/blob/master/examples/tcp_client.py)

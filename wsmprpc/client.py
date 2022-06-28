@@ -1,13 +1,16 @@
 import asyncio
-import logging
 import functools
-from collections import Iterable
-from . import msg_type as mtype
+try:
+    from collections import Iterable
+except:
+    from collections.abc import Iterable
 import msgpack
+from . import msg_type as mtype
 from .rpc_stream import RPCStream
 from .error import *
 
-logger = logging.getLogger(__name__)
+# import logging
+# logger = logging.getLogger(__name__)
 
 class RPCFuture(asyncio.Future):
 
@@ -78,15 +81,17 @@ class RPCClient:
     async def _run(self):
         unpacker = msgpack.Unpacker(None, raw=False, use_list=self._use_list)
         async for data in self.ws:
-            try:
-                unpacker.feed(data)
+            # try:
+            unpacker.feed(data)
+            while True:
                 try:
                     msg = unpacker.unpack()
                 except msgpack.exceptions.OutOfData:
-                    continue                
+                    break
+
                 if self._fnames is None:
                     self._doc_ls = msg
-                    self._fnames = [sig[sig.find('def')+4: sig.index('(')] for sig, doc in self._doc_ls]     
+                    self._fnames = [sig[sig.find('def')+4: sig.index('(')] for sig, doc in self._doc_ls]
                     self._rpc_doc_fut.set_result(None)
                     continue
                 msgtype, msgid = msg[:2]
@@ -113,8 +118,8 @@ class RPCClient:
                 elif msgtype == mtype.RESPONSE_API:
                     self._rpc_doc_fut.set_result(msg[-1])
 
-            except Exception as e:
-                logger.exception(str(e))
+            # except Exception as e:
+            #     logger.exception(str(e))
         
 
 
@@ -142,16 +147,18 @@ class RPCClient:
                 await self._send_stream_chunck(msgid, i)
         await self._send_stream_end(msgid)   
 
+    async def _translate_method_name(self, method):
+        if self._use_fn_num:
+            if self._fnames is None:
+                await self._rpc_doc_fut
+            return self._fnames.index(method)
+        return method
+
     def _request(self, method, *args, **kwargs):
         msgid = self._next_msgid()
         req_iter = kwargs.pop('request_stream', None)
         async def start():
-            nonlocal method
-            if self._use_fn_num:
-                if self._fnames is None:
-                    await self._rpc_doc_fut
-                method = self._fnames.index(method)
-            await self._send_request(msgid, method, args)
+            await self._send_request(msgid, await self._translate_method_name(method), args)
             if req_iter:
                 await self._req_iter(msgid, req_iter)
         fut = RPCFuture(msgid=msgid, start=start, cancel=self._send_cancel, q_size=kwargs.pop('q_size', 0), response_stream=kwargs.pop('response_stream', None))

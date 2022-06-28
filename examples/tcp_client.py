@@ -1,9 +1,11 @@
-import asyncio, websockets
-from wsmprpc import RPCClient
+# see: https://docs.python.org/3/library/asyncio-stream.html
+import asyncio
+from wsmprpc.client import RPCClient
+from tcp_socket_wrapper import tcp_socket_wrapper
 
 async def main():
-    async with websockets.connect('ws://localhost:8000') as ws:
-        stub = RPCClient(ws)
+    async with tcp_socket_wrapper(*await asyncio.open_connection('localhost', 8000)) as socket:
+        stub = RPCClient(socket)
 
         # normal rpc
         print(await stub.div(1, 3))
@@ -29,6 +31,5 @@ async def main():
         # combine request-streaming and response-streaming
         async for i in stub.uppercase(request_stream=['hello', 'rpc']):
             print(i)
-
 
 asyncio.run(main())
