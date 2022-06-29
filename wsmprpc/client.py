@@ -9,9 +9,6 @@ from . import msg_type as mtype
 from .rpc_stream import RPCStream
 from .error import *
 
-# import logging
-# logger = logging.getLogger(__name__)
-
 class RPCFuture(asyncio.Future):
 
     def __init__(self, msgid, start, cancel, q_size, response_stream):
@@ -39,14 +36,12 @@ class RPCFuture(asyncio.Future):
     def __del__(self):
         self.cancel()
 
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
+    async def __aiter__(self):
         if not (self.cancelled() or self._request_sent):
             self._request_sent = True
             await self._start()
-        return await self.response_stream.__anext__()
+        async for x in self.response_stream:
+            yield x
 
     def __await__(self):
         if not (self.cancelled() or self._request_sent):
@@ -61,15 +56,16 @@ class RPCClient:
         self._use_list = use_list
         self._use_fn_num = use_fn_num
         self._packer = msgpack.Packer(use_bin_type=True)
-        self._mid = 0
+        self._mid = 1
         self._tasks = {}
         self._doc_ls = None        
         self._fnames = None
         self._rpc_doc_fut = asyncio.Future()
         asyncio.create_task(self._run())
 
-    @property
-    def rpc_doc(self):
+    async def rpc_doc(self):
+        if self._doc_ls is None:
+            await self._rpc_doc_fut
         return self._doc_ls
 
     def _next_msgid(self):
@@ -81,7 +77,6 @@ class RPCClient:
     async def _run(self):
         unpacker = msgpack.Unpacker(None, raw=False, use_list=self._use_list)
         async for data in self.ws:
-            # try:
             unpacker.feed(data)
             while True:
                 try:
@@ -91,7 +86,7 @@ class RPCClient:
 
                 if self._fnames is None:
                     self._doc_ls = msg
-                    self._fnames = [sig[sig.find('def')+4: sig.index('(')] for sig, doc in self._doc_ls]
+                    self._fnames = [sig[:sig.index('(')].split(' ')[-1] for sig, doc in self._doc_ls]
                     self._rpc_doc_fut.set_result(None)
                     continue
                 msgtype, msgid = msg[:2]
@@ -112,22 +107,20 @@ class RPCClient:
                 elif msgtype == mtype.RESPONSE_STREAM_END:
                     t = self._tasks.pop(msgid, None)
                     if t and not t.done():
-                        t.response_stream.force_put_nowait(StopAsyncIteration())
+                        t.response_stream.force_close_nowait()
                         t.set_result(None)
 
                 elif msgtype == mtype.RESPONSE_API:
                     self._rpc_doc_fut.set_result(msg[-1])
-
-            # except Exception as e:
-            #     logger.exception(str(e))
         
 
 
     def __getattr__(self, method):
         return functools.partial(self._request, method)
 
-    async def _send_request(self, msgid, method, params):
-        await self.ws.send(self._packer.pack((mtype.REQUEST, msgid, method, params)))
+    async def _send_request(self, msgid, method, args, kwargs):
+        pk = (mtype.REQUEST, msgid, method, args, kwargs) if kwargs else (mtype.REQUEST, msgid, method, args)
+        await self.ws.send(self._packer.pack(pk))
 
     async def _send_stream_chunck(self, msgid, chunck):
         await self.ws.send(self._packer.pack((mtype.REQUEST_STREAM_CHUNCK, msgid, chunck)))
@@ -145,7 +138,7 @@ class RPCClient:
         else:
             async for i in iter:
                 await self._send_stream_chunck(msgid, i)
-        await self._send_stream_end(msgid)   
+        await self._send_stream_end(msgid)
 
     async def _translate_method_name(self, method):
         if self._use_fn_num:
@@ -158,7 +151,7 @@ class RPCClient:
         msgid = self._next_msgid()
         req_iter = kwargs.pop('request_stream', None)
         async def start():
-            await self._send_request(msgid, await self._translate_method_name(method), args)
+            await self._send_request(msgid, await self._translate_method_name(method), args, kwargs)
             if req_iter:
                 await self._req_iter(msgid, req_iter)
         fut = RPCFuture(msgid=msgid, start=start, cancel=self._send_cancel, q_size=kwargs.pop('q_size', 0), response_stream=kwargs.pop('response_stream', None))

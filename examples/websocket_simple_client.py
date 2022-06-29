@@ -5,6 +5,12 @@ async def main():
     async with websockets.connect('ws://localhost:8000') as ws:
         stub = RPCClient(ws)
 
+        print("Usage:")
+        for fn, doc in await stub.rpc_doc():
+            print(fn)
+            print('    '+doc)
+        print()
+
         # normal rpc
         print(await stub.div(1, 3))
 

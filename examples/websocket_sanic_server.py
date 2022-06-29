@@ -46,21 +46,20 @@ async def uppercase(*, request_stream):
         yield word.upper()
 
 
-class _socket_wrapper:
+class socket_wrapper:
     def __init__(self, ws):
         self.ws = ws
     async def send(self, data):
         return await self.ws.send(data)
-    async def __anext__(self):
-        return await self.ws.recv()
-    def __aiter__(self):
-        return self
+    async def __aiter__(self):
+        while True:
+            yield await self.ws.recv()
 
 app = sanic.Sanic(__name__)
 
 @app.websocket("/")
 async def home(request, ws):
-    await rpc_server.run(_socket_wrapper(ws))
+    await rpc_server.run(socket_wrapper(ws))
 
 @app.route('/rpc_doc')
 async def rpc_doc(request):
