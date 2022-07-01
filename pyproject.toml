@@ -8,7 +8,7 @@ version = "2.0.0"
 description = "asynchronous Python msgpack RPC over websocket(or TCP socket)"
 readme = "README.md"
 authors = [{ name = "HuangYan", email = "hyansuper@foxmail.com" }]
-
+license = { file = "LICENSE" }
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python",
