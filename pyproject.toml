@@ -1,0 +1,25 @@
+[build-system]
+requires      = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wsmprpc"
+version = "2.0.0"
+description = "asynchronous Python msgpack RPC over websocket(or TCP socket)"
+readme = "README.md"
+authors = [{ name = "HuangYan", email = "hyansuper@foxmail.com" }]
+
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+
+keywords = ["websocket", "socket", "TCP", "msgpack", "RPC", "streaming"]
+dependencies = [
+    "msgpack"
+]
+requires-python = ">=3.7"
+
+[project.urls]
+Homepage = "https://github.com/hyansuper/wsmprpc"

@@ -48,7 +48,7 @@ async def repeat(word: str, count: int) -> AsyncGenerator[str, None]:
         yield word
 
 # combine request-streaming and response-streaming.
-# you can also specify stream queue size, although not necessary
+# you can also specify receive stream queue size, although not necessary
 @rpc_server.register(q_size=10)
 async def uppercase(*, request_stream: Iterable[str]) -> AsyncGenerator[str, None]:
     '''convert input stream to uppercase'''

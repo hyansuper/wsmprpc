@@ -5,10 +5,10 @@ async def main():
     async with websockets.connect('ws://localhost:8000') as ws:
         stub = RPCClient(ws)
 
-        print("Usage:")
-        for fn, doc in await stub.rpc_doc():
+        # show available RPCs
+        for fn, doc in await stub.get_rpc_doc():
             print(fn)
-            print('    '+doc)
+            print(' '*4 + doc)
         print()
 
         # normal rpc
@@ -18,9 +18,9 @@ async def main():
         s = stub.sleep(3)
         async def cancel_sleep():
             await asyncio.sleep(1)
-            s.cancel()
+            s.cancel() # or better: await s.async_cancel()
+        asyncio.create_task(cancel_sleep())
         try:
-            asyncio.create_task(cancel_sleep())
             print(await s)
         except asyncio.CancelledError as e:
             print('cancelled')

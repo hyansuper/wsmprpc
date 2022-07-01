@@ -1,5 +1,5 @@
 class RPCServerError(Exception):
-	pass
+    pass
 
 class RPCClientError(Exception):
     pass

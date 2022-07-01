@@ -8,11 +8,11 @@ from .error import *
 
 class RPCServer:
 
-    def __init__(self, ws=None, *, timeout=10, use_list=False):
+    def __init__(self, ws=None, *, use_list=False):
         self.ws = ws
-        self.timeout = timeout
         self._packer = msgpack.Packer(use_bin_type=True)
         self._use_list = use_list
+        self._rpc_doc = None
         self._rpc_fn = OrderedDict()
 
     def register(self, fn=None, *, q_size=0):
@@ -27,7 +27,7 @@ class RPCServer:
 
     @property
     def rpc_doc(self):
-        if not hasattr(self, '_rpc_doc'):
+        if self._rpc_doc is None:
             self._rpc_doc = [
                 (fname + str(inspect.signature(fn)), fn.__doc__ or '')
                 for fname, (fn, qsize) in self._rpc_fn.items()]
@@ -35,12 +35,12 @@ class RPCServer:
         return self._rpc_doc
 
     @staticmethod
-    async def _join(tasks):
+    async def _join(tasks, timeout=3):
         remains = tasks.values()
         if remains:
             for t,q in remains:
                 t.cancel()
-            await asyncio.wait([t for t,q in tasks.values()], timeout=self.timeout)
+            await asyncio.wait([t for t,q in tasks.values()], timeout=timeout)
 
     async def run(self, ws=None):
         if ws is not None:
@@ -51,14 +51,9 @@ class RPCServer:
             await self.ws.send(self._packer.pack(self.rpc_doc))
             async for data in self.ws:
                 unpacker.feed(data)
-                while True:
-                    try:
-                        msg = unpacker.unpack()
-                    except msgpack.exceptions.OutOfData:
-                        break
+                for msg in unpacker:
 
                     msgtype, msgid = msg[:2]
-
                     if msgtype == mtype.REQUEST or msgtype == mtype.NOTIFY:
                         method_name = msg[2]
                         if isinstance(method_name, int) and 0<=method_name<len(self._fn_list):
