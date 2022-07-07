@@ -5,3 +5,4 @@ dist/
 .eggs/
 *.egg-info/
 js/c.html
+.pytest_cache/

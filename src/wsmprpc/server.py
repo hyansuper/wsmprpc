@@ -35,12 +35,10 @@ class RPCServer:
         return self._rpc_doc
 
     @staticmethod
-    async def _join(tasks, timeout=3):
-        remains = tasks.values()
-        if remains:
-            for t,q in remains:
-                t.cancel()
-            await asyncio.wait([t for t,q in tasks.values()], timeout=timeout)
+    async def _join(tasks, timeout=10):
+        for t in tasks:
+            t.cancel()
+        await asyncio.wait(tasks, timeout=timeout)
 
     async def run(self, ws=None):
         if ws is not None:
@@ -85,26 +83,27 @@ class RPCServer:
                                 task.add_done_callback(lambda f: tasks.pop(msgid, None))
 
                         else:
-                            await self._send_error(msgid, f'{method_name} method not found.')
-
-                    elif msgtype == mtype.REQUEST_STREAM_CHUNCK:
-                        tasks[msgid][1].force_put_nowait(msg[2])
-
-                    elif msgtype == mtype.REQUEST_STREAM_END:
-                        tasks[msgid][1].force_close_nowait()
-
-                    elif msgtype == mtype.REQUEST_CANCEL:
-                        t = tasks.get(msgid)
-                        t and t[0].cancel()
+                            await self._send_error(msgid, f'Unknown function {method_name}.')
 
                     else:
-                        raise RPCServerError("unknown msgtype")
+                        task, q = tasks.get(msgid, (None, None))
+                        # if t is None:
+                            # await self._send_error(msgid, f'Wrong message id {msgid}.')
 
-        finally:
-            try: # cancel all tasks
-                await asyncio.shield(self._join(tasks))
-            except asyncio.CancelledError:
-                await self._join(tasks)
+                        if msgtype == mtype.REQUEST_STREAM_CHUNCK:
+                            q and q.force_put_nowait(msg[2])
+
+                        elif msgtype == mtype.REQUEST_STREAM_END:
+                            q and q.force_close_nowait()
+
+                        elif msgtype == mtype.REQUEST_CANCEL:
+                            task and task.cancel()
+
+                        else:
+                            await self._send_error(msgid, f'Wrong message type {msgtype}.')
+
+        finally: # cancel remaining tasks
+            tasks and await asyncio.shield(self._join(list(t for t, q in tasks.values())))
 
 
     def _call(self, method, q, args, kwargs=None):

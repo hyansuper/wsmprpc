@@ -2,7 +2,7 @@ import asyncio
 import functools
 try:
     from collections import Iterable
-except:
+except ImportError:
     from collections.abc import Iterable
 import msgpack
 from . import msg_type as mtype
@@ -26,13 +26,21 @@ class RPCFuture(asyncio.Future):
         return self._response_stream
 
     def cancel(self):
+        '''
+        `cancel()` immediately returns False if the RPC is already done or cancelled.
+        Otherwise immediately returns True and will shedule a task to send cancel command to server.
+        This method behaves consistently with asyncio.Future.cancel(), but usually `async_cancel()` is preferred.
+        '''
         if not self.done() and self._request_sent:
             self._response_stream and self._response_stream.force_put_nowait(asyncio.CancelledError())
             self._cancel_task = asyncio.create_task(self._cancel(self._msgid))
         return super().cancel()
 
-    # preferred over cancel()
     async def async_cancel(self):
+        '''
+        Same as `cancel()` except that `async_cancel()` awaits the cancel command be sent to server and then returns,
+        but no guarantee how to server will react.
+        '''
         if not self.done() and self._request_sent:
             ret = super().cancel()
             self._response_stream and self._response_stream.force_put_nowait(asyncio.CancelledError())
