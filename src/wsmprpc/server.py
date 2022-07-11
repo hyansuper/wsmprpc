@@ -2,7 +2,7 @@ import asyncio
 import inspect
 from collections import OrderedDict
 import msgpack
-from .rpc_stream import RPCStream
+from .stream import RPCStream
 from . import msg_type as mtype
 from .error import *
 
@@ -12,8 +12,9 @@ class RPCServer:
         self.ws = ws
         self._packer = msgpack.Packer(use_bin_type=True)
         self._use_list = use_list
-        self._rpc_doc = None
-        self._rpc_fn = OrderedDict()
+        self._rpc_info = None # [(sig, docstr, req_stream, resp_stream)]
+        self._rpc_ls = None # [fname]
+        self._rpc_fn = OrderedDict() # {fname: (fn, qsize)}
 
     def register(self, fn=None, *, q_size=0):
         if fn:
@@ -23,16 +24,19 @@ class RPCServer:
 
     def unregister(self, fn):
         self._rpc_fn.pop(fn.__name__, None)
-        return fn
 
     @property
-    def rpc_doc(self):
-        if self._rpc_doc is None:
-            self._rpc_doc = [
-                (fname + str(inspect.signature(fn)), fn.__doc__ or '')
+    def rpc_info(self):
+        '''(fn_sig, docstring, request_stream, response_stream)'''
+        if self._rpc_info is None:
+            self._rpc_info = [
+                (fname + str(inspect.signature(fn)),
+                    fn.__doc__ or '',
+                    bool((req:=inspect.getfullargspec(fn).kwonlyargs) and req[-1]=='request_stream'),
+                    inspect.isasyncgenfunction(fn))
                 for fname, (fn, qsize) in self._rpc_fn.items()]
-            self._fn_list = list(self._rpc_fn.keys())
-        return self._rpc_doc
+            self._rpc_ls = list(self._rpc_fn.keys())
+        return self._rpc_info
 
     @staticmethod
     async def _join(tasks, timeout=10):
@@ -46,7 +50,7 @@ class RPCServer:
         tasks = {} # dict[msgid, (task, queue)]
         unpacker = msgpack.Unpacker(None, raw=False, use_list=self._use_list)
         try:
-            await self.ws.send(self._packer.pack(self.rpc_doc))
+            await self.ws.send(self._packer.pack(self.rpc_info))
             async for data in self.ws:
                 unpacker.feed(data)
                 for msg in unpacker:

@@ -19,7 +19,7 @@ keywords = ["websocket", "socket", "TCP", "msgpack", "RPC", "streaming"]
 dependencies = [
     "msgpack"
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 
 [project.urls]
 Homepage = "https://github.com/hyansuper/wsmprpc"

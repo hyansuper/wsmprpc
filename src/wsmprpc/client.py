@@ -6,7 +6,7 @@ except ImportError:
     from collections.abc import Iterable
 import msgpack
 from . import msg_type as mtype
-from .rpc_stream import RPCStream
+from .stream import RPCStream
 from .error import *
 
 class RPCFuture(asyncio.Future):
@@ -21,8 +21,6 @@ class RPCFuture(asyncio.Future):
 
     @property
     def response_stream(self):
-        if not self._response_stream:
-            self._response_stream = RPCStream()
         return self._response_stream
 
     def cancel(self):
@@ -38,7 +36,7 @@ class RPCFuture(asyncio.Future):
 
     async def async_cancel(self):
         '''
-        Same as `cancel()` except that `async_cancel()` awaits the cancel command be sent to server and then returns,
+        Same as `cancel()` except that `async_cancel()` awaits the cancel command be sent to server,
         but no guarantee how to server will react.
         '''
         if not self.done() and self._request_sent:
@@ -52,10 +50,14 @@ class RPCFuture(asyncio.Future):
     #     self.cancel()
 
     async def __aiter__(self):
-        if not (self.cancelled() or self._request_sent):
+        if self._response_stream is None:
+            raise RPCClientError('Not a response-streaming rpc')
+        if self.cancelled():
+            raise asyncio.CancelledError
+        elif not self._request_sent:
             self._request_sent = True
             await self._start()
-        async for x in self.response_stream:
+        async for x in self._response_stream:
             yield x
 
     def __await__(self):
@@ -66,22 +68,37 @@ class RPCFuture(asyncio.Future):
 
 
 class RPCClient:
-    def __init__(self, ws, *, use_list=False, use_fn_num=False):
+    def __init__(self, ws=None, *, use_list=False, use_fn_num=False):
         self.ws = ws
         self._use_list = use_list
         self._use_fn_num = use_fn_num
         self._packer = msgpack.Packer(use_bin_type=True)
         self._mid = 1 # 0 reserved
         self._tasks = {}
-        self._doc_ls = None        
-        self._fnames = None
-        self._rpc_doc_fut = asyncio.Future()
-        asyncio.create_task(self._run())
+        self._rpc_info = None
+        self._fn_ls = None
+        self._rpc_info_fut = asyncio.Future()
 
-    async def get_rpc_doc(self):
-        if self._doc_ls is None:
-            await self._rpc_doc_fut
-        return self._doc_ls
+    async def connect(self, ws=None):
+        if self.ws and ws:
+            raise RPCClientError('Socket is already set')
+        if self.ws is None:
+            self.ws = ws
+        asyncio.create_task(self._run())
+        await self._rpc_info_fut
+
+    async def __aenter__(self):
+        await self.connect()
+        return self
+
+    async def __aexit__(self, *args, **kwargs):
+        pass
+
+    @property
+    def rpc_info(self):
+        '''(fn_sig, docstring, request_stream, response_stream)'''
+        assert self._rpc_info_fut.done()
+        return self._rpc_info
 
     def _next_msgid(self):
         if self._mid >= 2**20:
@@ -95,10 +112,10 @@ class RPCClient:
             unpacker.feed(data)
             for msg in unpacker:
 
-                if self._fnames is None:
-                    self._doc_ls = msg
-                    self._fnames = [sig[:sig.index('(')].split(' ')[-1] for sig, doc in self._doc_ls]
-                    self._rpc_doc_fut.set_result(None)
+                if self._fn_ls is None:
+                    self._rpc_info = msg
+                    self._fn_ls = [sig[:sig.index('(')].split(' ')[-1] for sig, *_ in self._rpc_info]
+                    self._rpc_info_fut.set_result(None)
                     continue
                 msgtype, msgid = msg[:2]
                 if msgtype == mtype.RESPONSE:
@@ -120,9 +137,6 @@ class RPCClient:
                     if t and not t.done():
                         t.response_stream.force_close_nowait()
                         t.set_result(None)
-
-                elif msgtype == mtype.RESPONSE_API:
-                    self._rpc_doc_fut.set_result(msg[-1])
         
 
 
@@ -151,21 +165,27 @@ class RPCClient:
                 await self._send_stream_chunck(msgid, i)
         await self._send_stream_end(msgid)
 
-    async def _translate_method_name(self, method):
-        if self._use_fn_num:
-            if self._fnames is None:
-                await self._rpc_doc_fut
-            return self._fnames.index(method)
-        return method
-
     def _request(self, method, *args, **kwargs):
-        msgid = self._next_msgid()
+        try:
+            method_index = self._fn_ls.index(method)
+        except ValueError:
+            raise RPCClientError(f"Unknown RPC function {method}")
+        req, resp = self._rpc_info[method_index][2:4]
         req_iter = kwargs.pop('request_stream', None)
-        res_iter = kwargs.pop('response_stream', None)
+        if req and req_iter is None:
+            raise RPCClientError(f'{method} must take "request_stream" as the last keyword arg.')
+        elif not req and req_iter:
+            raise RPCClientError(f'{method} is not a request-streaming RPC.')
+        resp_iter = kwargs.pop('response_stream', RPCStream() if resp else None)
+        msgid = self._next_msgid()
         async def start():
-            await self._send_request(msgid, await self._translate_method_name(method), args, kwargs)
+            await self._send_request(msgid, method_index if self._use_fn_num else method, args, kwargs)
             if req_iter:
                 await self._req_iter(msgid, req_iter)
-        fut = RPCFuture(msgid=msgid, start=start, cancel=self._send_cancel, response_stream=res_iter)
+        fut = RPCFuture(msgid=msgid, start=start, cancel=self._send_cancel, response_stream=resp_iter)
         self._tasks[msgid] = fut
         return fut
+
+
+def connect(ws):
+    return RPCClient(ws)

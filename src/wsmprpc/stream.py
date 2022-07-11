@@ -7,11 +7,8 @@ class RPCStream(asyncio.Queue):
         super().__init__(maxsize)
 
     async def __aiter__(self):
-        while True:
-            d = await self.get()
-            if d is self._stream_end:
-                return
-            elif isinstance(d, BaseException):
+        while (d:=await self.get()) is not self._stream_end:
+            if isinstance(d, BaseException):
                 raise d
             else:
                 yield d

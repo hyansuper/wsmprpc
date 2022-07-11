@@ -14,6 +14,6 @@ class tcp_socket_wrapper:
         await self.writer.drain()
     async def __aenter__(self):
         return self
-    async def __aexit__(self, *args):
+    async def __aexit__(self, *args, **kwargs):
         self.writer.close()
         await self.writer.wait_closed()
