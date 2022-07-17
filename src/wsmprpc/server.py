@@ -3,7 +3,7 @@ import inspect
 from collections import OrderedDict
 import msgpack
 from .stream import RPCStream
-from . import msg_type as mtype
+from .msg_type import RPCMsgType
 from .error import *
 
 class RPCServer:
@@ -32,7 +32,7 @@ class RPCServer:
             self._rpc_info = [
                 (fname + str(inspect.signature(fn)),
                     fn.__doc__ or '',
-                    bool((req:=inspect.getfullargspec(fn).kwonlyargs) and req[-1]=='request_stream'),
+                    'request_stream' in inspect.getfullargspec(fn).kwonlyargs,
                     inspect.isasyncgenfunction(fn))
                 for fname, (fn, qsize) in self._rpc_fn.items()]
             self._rpc_ls = list(self._rpc_fn.keys())
@@ -56,16 +56,17 @@ class RPCServer:
                 for msg in unpacker:
 
                     msgtype, msgid = msg[:2]
-                    if msgtype == mtype.REQUEST or msgtype == mtype.NOTIFY:
+                    if msgtype == RPCMsgType.REQUEST:
                         method_name = msg[2]
                         if isinstance(method_name, int) and 0<=method_name<len(self._fn_list):
                             method_name = self._fn_list[method_name]
                         method, q_size = self._rpc_fn.get(method_name, (None, 0))
 
                         if method_name and method:
-                            kwoa = inspect.getfullargspec(method).kwonlyargs
                             task, q = None, None
-                            if kwoa and kwoa[-1]=='request_stream':
+                            # kwoa = inspect.getfullargspec(method).kwonlyargs
+                            # if kwoa and kwoa[-1]=='request_stream':
+                            if 'request_stream' in inspect.getfullargspec(method).kwonlyargs:
                                 q = RPCStream(q_size)
 
                             if inspect.isasyncgenfunction(method):
@@ -94,13 +95,13 @@ class RPCServer:
                         # if t is None:
                             # await self._send_error(msgid, f'Wrong message id {msgid}.')
 
-                        if msgtype == mtype.REQUEST_STREAM_CHUNCK:
+                        if msgtype == RPCMsgType.REQUEST_STREAM_CHUNCK:
                             q and q.force_put_nowait(msg[2])
 
-                        elif msgtype == mtype.REQUEST_STREAM_END:
+                        elif msgtype == RPCMsgType.REQUEST_STREAM_END:
                             q and q.force_close_nowait()
 
-                        elif msgtype == mtype.REQUEST_CANCEL:
+                        elif msgtype == RPCMsgType.REQUEST_CANCEL:
                             task and task.cancel()
 
                         else:
@@ -135,13 +136,13 @@ class RPCServer:
 
 
     async def _send_response(self, msgid, result):
-        await self.ws.send(self._packer.pack((mtype.RESPONSE, msgid, None, result)))
+        await self.ws.send(self._packer.pack((RPCMsgType.RESPONSE.value, msgid, None, result)))
 
     async def _send_error(self, msgid, err):
-        await self.ws.send(self._packer.pack((mtype.RESPONSE, msgid, err, None)))
+        await self.ws.send(self._packer.pack((RPCMsgType.RESPONSE.value, msgid, err, None)))
 
     async def _send_stream_chunck(self, msgid, chunck):
-        await self.ws.send(self._packer.pack((mtype.RESPONSE_STREAM_CHUNCK, msgid, chunck)))
+        await self.ws.send(self._packer.pack((RPCMsgType.RESPONSE_STREAM_CHUNCK.value, msgid, chunck)))
 
     async def _send_stream_end(self, msgid):
-        await self.ws.send(self._packer.pack((mtype.RESPONSE_STREAM_END, msgid)))
+        await self.ws.send(self._packer.pack((RPCMsgType.RESPONSE_STREAM_END.value, msgid)))

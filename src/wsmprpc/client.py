@@ -5,7 +5,7 @@ try:
 except ImportError:
     from collections.abc import Iterable
 import msgpack
-from . import msg_type as mtype
+from .msg_type import RPCMsgType
 from .stream import RPCStream
 from .error import *
 
@@ -118,7 +118,7 @@ class RPCClient:
                     self._rpc_info_fut.set_result(None)
                     continue
                 msgtype, msgid = msg[:2]
-                if msgtype == mtype.RESPONSE:
+                if msgtype == RPCMsgType.RESPONSE:
                     err, result = msg[2:]
                     t = self._tasks.pop(msgid, None)
                     if t and not t.done():
@@ -129,10 +129,10 @@ class RPCClient:
                         else:
                             t.set_result(result)
 
-                elif msgtype == mtype.RESPONSE_STREAM_CHUNCK:
+                elif msgtype == RPCMsgType.RESPONSE_STREAM_CHUNCK:
                     self._tasks[msgid].response_stream.force_put_nowait(msg[2])
 
-                elif msgtype == mtype.RESPONSE_STREAM_END:
+                elif msgtype == RPCMsgType.RESPONSE_STREAM_END:
                     t = self._tasks.pop(msgid, None)
                     if t and not t.done():
                         t.response_stream.force_close_nowait()
@@ -144,17 +144,17 @@ class RPCClient:
         return functools.partial(self._request, method)
 
     async def _send_request(self, msgid, method, args, kwargs):
-        pk = (mtype.REQUEST, msgid, method, args, kwargs) if kwargs else (mtype.REQUEST, msgid, method, args)
+        pk = (RPCMsgType.REQUEST.value, msgid, method, args, kwargs) if kwargs else (RPCMsgType.REQUEST.value, msgid, method, args)
         await self.ws.send(self._packer.pack(pk))
 
     async def _send_stream_chunck(self, msgid, chunck):
-        await self.ws.send(self._packer.pack((mtype.REQUEST_STREAM_CHUNCK, msgid, chunck)))
+        await self.ws.send(self._packer.pack((RPCMsgType.REQUEST_STREAM_CHUNCK.value, msgid, chunck)))
 
     async def _send_stream_end(self, msgid):
-        await self.ws.send(self._packer.pack((mtype.REQUEST_STREAM_END, msgid)))
+        await self.ws.send(self._packer.pack((RPCMsgType.REQUEST_STREAM_END.value, msgid)))
 
     async def _send_cancel(self, msgid):
-        await self.ws.send(self._packer.pack((mtype.REQUEST_CANCEL, msgid)))
+        await self.ws.send(self._packer.pack((RPCMsgType.REQUEST_CANCEL.value, msgid)))
 
     async def _req_iter(self, msgid, iter):
         if isinstance(iter, Iterable):

@@ -25,17 +25,17 @@ async def delay_echo(delay: float, echo: str) -> str:
 async def sum(*, request_stream: Iterable[int]) -> int:
     '''Return Sum of all elements in input stream'''
     sum = 0
-    async for a in request_stream:
-        sum += a
+    async for i in request_stream:
+        sum += i
     return sum
 
 @rpc_server.register
-async def repeat(word: str, count: int) -> AsyncGenerator[str, None]:
+async def repeat(word: str, count: int, interval: float=.5) -> AsyncGenerator[str, None]:
     '''Output [word] for [count] times'''
     while count > 0:
         count -= 1
         yield word
-        await asyncio.sleep(.5)
+        await asyncio.sleep(interval)
 
 @rpc_server.register(q_size=10)
 async def uppercase(*, request_stream: Iterable[str]) -> AsyncGenerator[str, None]:

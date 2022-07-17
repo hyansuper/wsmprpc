@@ -6,12 +6,12 @@ async def main():
         wsmprpc.connect(ws) as stub:
 
         # show all RPCs
-        print('rpc info:')
+        print('[rpc info]')
         for fun_sig, doc_str, request_stream, response_stream in stub.rpc_info:
             print(fun_sig)
             print(' '*4 + doc_str)
-            print((request_stream, response_stream))
-        print()
+            print(' '*4 + f'{request_stream=}, {response_stream=}')
+            print('-'*10)
 
         # normal rpc
         print('1/3=', await stub.div(1, 3))
@@ -19,9 +19,8 @@ async def main():
         # cancellation
         try:
             ech = stub.delay_echo(delay=2, echo='ok')
-            asyncio.get_running_loop().call_later(1, ech.cancel)
-            # or, await ech.async_cancel()
-            print('echo=', await ech)
+            ech.cancel() # or, await ech.async_cancel()
+            print('delay_echo:', await ech)
         except asyncio.CancelledError:
             print('echo is cancelled')
 
@@ -29,10 +28,7 @@ async def main():
         print('sum of range(3)=', await stub.sum(request_stream=range(3)))
 
         # response-streaming
-        print('repeat:', end=' ')
-        async for i in stub.repeat('bla...', 4):
-            print(i, end=' ')
-        print()
+        print('repeat:', ','.join([i async for i in stub.repeat('bla', 4)]))
 
         # combine request-streaming and response-streaming
         print('uppercase:', end=' ')

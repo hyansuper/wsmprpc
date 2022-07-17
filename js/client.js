@@ -92,15 +92,15 @@ class RPCFuture extends Promise {
 }
 
 class RPCClient{
-    static REQUEST = 0
-    static RESPONSE = 1
-    static NOTIFY = 2
-    static REQUEST_STREAM_CHUNCK = 3
-    static RESPONSE_STREAM_CHUNCK = 4
-    static REQUEST_STREAM_END = 5
-    static RESPONSE_STREAM_END = 6
-    static REQUEST_CANCEL = 7
-    static RESPONSE_CANCEL = 8
+    static NOTIFY = 1
+    static REQUEST = 2
+    static RESPONSE = 3
+    static REQUEST_STREAM_CHUNCK = 4
+    static RESPONSE_STREAM_CHUNCK = 5
+    static REQUEST_STREAM_END = 6
+    static RESPONSE_STREAM_END = 7
+    static REQUEST_CANCEL = 8
+    static RESPONSE_CANCEL = 9
 
     constructor(ws) {
         this._ws = ws;        
