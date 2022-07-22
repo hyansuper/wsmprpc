@@ -4,26 +4,27 @@ from collections import OrderedDict
 import msgpack
 from .stream import RPCStream
 from .msg_type import RPCMsgType
+from .method_type import RPCMethodType
 from .error import *
 
 class RPCServer:
 
-    def __init__(self, ws=None, *, use_list=False):
+    def __init__(self, ws=None):
         self.ws = ws
         self._packer = msgpack.Packer(use_bin_type=True)
-        self._use_list = use_list
         self._rpc_info = None # [(sig, docstr, req_stream, resp_stream)]
         self._rpc_ls = None # [fname]
-        self._rpc_fn = OrderedDict() # {fname: (fn, qsize)}
+        self._reg_rpc = OrderedDict() # {fname: (fn, qsize)}
+        self._rpc_meth_type = RPCMethodType.STR_NUM
 
     def register(self, fn=None, *, q_size=0):
         if fn:
-            self._rpc_fn.update({fn.__name__: (fn, q_size)})
+            self._reg_rpc.update({fn.__name__: (fn, q_size)})
             return fn
         return lambda fn: self.register(fn, q_size=q_size)
 
     def unregister(self, fn):
-        self._rpc_fn.pop(fn.__name__, None)
+        self._reg_rpc.pop(fn.__name__, None)
 
     @property
     def rpc_info(self):
@@ -34,8 +35,8 @@ class RPCServer:
                     fn.__doc__ or '',
                     'request_stream' in inspect.getfullargspec(fn).kwonlyargs,
                     inspect.isasyncgenfunction(fn))
-                for fname, (fn, qsize) in self._rpc_fn.items()]
-            self._rpc_ls = list(self._rpc_fn.keys())
+                for fname, (fn, qsize) in self._reg_rpc.items()]
+            self._rpc_ls = list(self._reg_rpc.keys())
         return self._rpc_info
 
     @staticmethod
@@ -48,9 +49,9 @@ class RPCServer:
         if ws is not None:
             self.ws = ws
         tasks = {} # dict[msgid, (task, queue)]
-        unpacker = msgpack.Unpacker(None, raw=False, use_list=self._use_list)
+        unpacker = msgpack.Unpacker(None, raw=False, use_list=False)
         try:
-            await self.ws.send(self._packer.pack(self.rpc_info))
+            await self.ws.send(self._packer.pack((self._rpc_meth_type.value, self.rpc_info)))
             async for data in self.ws:
                 unpacker.feed(data)
                 for msg in unpacker:
@@ -58,9 +59,9 @@ class RPCServer:
                     msgtype, msgid = msg[:2]
                     if msgtype == RPCMsgType.REQUEST:
                         method_name = msg[2]
-                        if isinstance(method_name, int) and 0<=method_name<len(self._fn_list):
-                            method_name = self._fn_list[method_name]
-                        method, q_size = self._rpc_fn.get(method_name, (None, 0))
+                        if isinstance(method_name, int) and 0<=method_name<len(self._rpc_ls):
+                            method_name = self._rpc_ls[method_name]
+                        method, q_size = self._reg_rpc.get(method_name, (None, 0))
 
                         if method_name and method:
                             task, q = None, None

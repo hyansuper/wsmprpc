@@ -8,8 +8,8 @@ asynchronous Python msgpack RPC over websocket(or TCP socket)
 * Compared to json, [msgpack](https://msgpack.org/) supports **binary data**.
 * Client is able to **cancel** long running calculation on server.
 * Supports **bidirectional streaming** RPC, where the client sends/receives a sequence of messages to/from server within one RPC.
-* No need to define .proto files like [gRPC](https://grpc.io/docs/tutorials/basic/python/). thanks to python's dynamic features, RPC functions defined on server side can be readily used by client as if they're client's own functions.
-* **Exceptions** raised in server RPC functions will also raise on client side.
+* No need to define .proto files like [gRPC](https://grpc.io/docs/tutorials/basic/python/). thanks to python's dynamic features, RPC methods defined on server side can be readily used by client as if they're client's own methods.
+* **Exceptions** raised in server RPC methods will also raise on client side.
 * Easy integration into any async web frameworks that support **websocket**.
 * lib for **javascript** client on web browsers.
 

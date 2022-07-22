@@ -6,6 +6,7 @@ except ImportError:
     from collections.abc import Iterable
 import msgpack
 from .msg_type import RPCMsgType
+from .method_type import RPCMethodType
 from .stream import RPCStream
 from .error import *
 
@@ -21,6 +22,8 @@ class RPCFuture(asyncio.Future):
 
     @property
     def response_stream(self):
+        if self._response_stream is None:
+            raise RPCClientError('Not a response-streaming rpc')
         return self._response_stream
 
     def cancel(self):
@@ -68,16 +71,16 @@ class RPCFuture(asyncio.Future):
 
 
 class RPCClient:
-    def __init__(self, ws=None, *, use_list=False, use_fn_num=False):
+    def __init__(self, ws=None, *, meth_num_first=False):
         self.ws = ws
-        self._use_list = use_list
-        self._use_fn_num = use_fn_num
+        self._meth_num_first = meth_num_first
         self._packer = msgpack.Packer(use_bin_type=True)
         self._mid = 1 # 0 reserved
         self._tasks = {}
         self._rpc_info = None
-        self._fn_ls = None
-        self._rpc_info_fut = asyncio.Future()
+        self._rpc_ls = None
+        self._rpc_meth_type = None
+        self._init_fut = asyncio.Future()
 
     async def connect(self, ws=None):
         if self.ws and ws:
@@ -85,7 +88,7 @@ class RPCClient:
         if self.ws is None:
             self.ws = ws
         asyncio.create_task(self._run())
-        await self._rpc_info_fut
+        await self._init_fut
 
     async def __aenter__(self):
         await self.connect()
@@ -96,27 +99,35 @@ class RPCClient:
 
     @property
     def rpc_info(self):
-        '''(fn_sig, docstring, request_stream, response_stream)'''
-        assert self._rpc_info_fut.done()
+        '''(method_sigature, docstring, request_stream, response_stream)'''
+        assert self._init_fut.done()
         return self._rpc_info
+
+    @property
+    def rpc_method_type(self):
+        assert self._init_fut.done()
+        return self._rpc_meth_type
 
     def _next_msgid(self):
         if self._mid >= 2**20:
-            self._mid = 0
+            self._mid = 1
         self._mid += 1
         return self._mid
 
     async def _run(self):
-        unpacker = msgpack.Unpacker(None, raw=False, use_list=self._use_list)
+        unpacker = msgpack.Unpacker(None, raw=False, use_list=False)
         async for data in self.ws:
             unpacker.feed(data)
             for msg in unpacker:
 
-                if self._fn_ls is None:
-                    self._rpc_info = msg
-                    self._fn_ls = [sig[:sig.index('(')].split(' ')[-1] for sig, *_ in self._rpc_info]
-                    self._rpc_info_fut.set_result(None)
+                if not self._init_fut.done():
+                    self._rpc_meth_type, self._rpc_info = msg
+                    self._use_meth_num = self._rpc_meth_type == RPCMethodType.NUM.value or \
+                                        self._meth_num_first and self._rpc_meth_type == RPCMethodType.STR_NUM.value
+                    self._rpc_ls = [sig[:sig.index('(')] for sig, *_ in self._rpc_info]
+                    self._init_fut.set_result(None)
                     continue
+
                 msgtype, msgid = msg[:2]
                 if msgtype == RPCMsgType.RESPONSE:
                     err, result = msg[2:]
@@ -167,19 +178,19 @@ class RPCClient:
 
     def _request(self, method, *args, **kwargs):
         try:
-            method_index = self._fn_ls.index(method)
+            method_index = self._rpc_ls.index(method)
         except ValueError:
-            raise RPCClientError(f"Unknown RPC function {method}")
+            raise RPCClientError(f"Unknown RPC method {method}")
         req, resp = self._rpc_info[method_index][2:4]
         req_iter = kwargs.pop('request_stream', None)
         if req and req_iter is None:
-            raise RPCClientError(f'{method} must take "request_stream" as the last keyword arg.')
+            raise RPCClientError(f'{method} must take "request_stream" as a keyword arg.')
         elif not req and req_iter:
             raise RPCClientError(f'{method} is not a request-streaming RPC.')
         resp_iter = kwargs.pop('response_stream', RPCStream() if resp else None)
         msgid = self._next_msgid()
         async def start():
-            await self._send_request(msgid, method_index if self._use_fn_num else method, args, kwargs)
+            await self._send_request(msgid, method_index if self._use_meth_num else method, args, kwargs)
             if req_iter:
                 await self._req_iter(msgid, req_iter)
         fut = RPCFuture(msgid=msgid, start=start, cancel=self._send_cancel, response_stream=resp_iter)

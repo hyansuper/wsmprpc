@@ -1,34 +1,45 @@
-
 <script src="msgpack.min.js"></script>
 <script src="client.js"></script>
 <script>
+function sleep(ms){return new Promise(r=>{setTimeout(r,ms)})}
 
 ws=new WebSocket('ws://localhost:8000/');
 
 ws.onopen = async function(e) {
 
-    var stub = new RPCClient(ws)
+    var stub = await RPCClient.connect(ws)
+
+    // show rpc_info
+    console.log('rpc_info:')
+    for(var [fn_sig, doc_str, request_stream, response_stream] of stub.rpc_info) {        
+        console.log(fn_sig);
+        console.log('    ', doc_str);
+        console.log('    ', 'request_stream:', request_stream, ',response_stream:', response_stream);
+        console.log('----------');
+    }
+
 
     // normal rpc
-    console.log(await stub.rpc('div',[1,3]))
+    console.log('1/3=', await stub.rpc('div',[1, 3]))
 
     // cancellation
-    var sleep = stub.rpc('sleep', [3])
-    sleep.cancel()
-    sleep.then(console.log).catch(console.log('cancelled'))
+    var echo = stub.rpc('delay_echo', [1, 'echo'])    
+    await sleep(500)
+    echo.cancel()
+    await echo.then(r=>{console.log('echo:', r)}, e=>{console.log('echo cancelled')})
 
     // request streaming
-    console.log(await stub.rpc('sum', [], request_stream=[1,2,3]))
+    console.log('1+2+3=', await stub.rpc('sum', [], {request_stream: [1,2,3]}))
 
     // response streaming
+    console.log("repeat('bla...', 3):")
     for await(var e of stub.rpc('repeat', ['bla...', 3]))
-        console.log(e)
+        console.log('    ', e)
 
     // combine request and response streaming
-    for await(var e of stub.rpc('uppercase', [], request_stream=['hello', 'rpc']))
-        console.log(e)
-
-    console.log(stub.rpc_doc)
+    console.log("uppercase(request_stream=['hello', 'rpc']):")
+    for await(var e of stub.rpc('uppercase', [], {request_stream: ['hello', 'rpc']}))
+        console.log('    ', e)
 }
 
 </script>
