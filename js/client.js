@@ -1,3 +1,5 @@
+__version__ = '2.0.0';
+function _major_version(v) {return v.split('.')[0];}
 class RPCClientError extends Error{
     constructor(message) {
         super(message);
@@ -73,11 +75,11 @@ class RPCFuture extends Promise {
         this._rj = null;
     }
 
-    get resolve() {
+    get _resolve() {
         return this._rj.resolve;
     }
 
-    get reject() {
+    get _reject() {
         return this._rj.reject;
     }
 
@@ -119,7 +121,7 @@ const RPCMsgType = {
     RESPONSE_CANCEL: 9,
 }
 
-const RPCMethodType = {
+const RPCMethodIDType = {
     STR: 1,
     NUM: 2,
     STR_NUM: 3,
@@ -127,23 +129,31 @@ const RPCMethodType = {
 
 class RPCClient{    
 
-    constructor(ws, meth_num_first=false) {
+    constructor(ws, pref_num_meth_id=false) {
         this._ws = ws;        
-        this._mid = 1;
-        this._meth_num_first = meth_num_first;
+        this._min_mid = 1;
+        this._max_mid = 2**16-1;
+        this._mid = this._min_mid;
+        this._pref_num_meth_id = pref_num_meth_id;
         this._tasks = {};
-        this._init_fut = new Promise(r=>{this._rpc_info_resolve=r});
+        this._init_fut_rj = {};
     }
 
     async _on_data (data) {
         try{
             const msg = msgpack.deserialize(await data.data.arrayBuffer());
             if (!this._rpc_info){
-                [this._rpc_meth_type, this._rpc_info] = msg;
-                this._rpc_ls = this._rpc_info.map(([sig])=> sig.substring(0, sig.indexOf('(')));
-                this._use_meth_num = this._rpc_meth_type == RPCMethodType.NUM ||
-                                        this._meth_num_first && this._rpc_meth_type == RPCMethodType.STR_NUM;
-                this._rpc_info_resolve();
+                if (msg.error) {
+                    this._init_fut_rj.reject(new RPCServerError(msg.error));
+                } else {
+                    this._min_mid = msg.min_mid ?? this._min_mid;
+                    this._max_mid = msg.max_mid ?? this._max_mid;
+                    this._rpc_info = msg.rpc_info;
+                    this._rpc_ls = this._rpc_info.map(([sig])=> sig.substring(0, sig.indexOf('(')));
+                    this._use_num_meth_id = msg.method_id_type == RPCMethodIDType.NUM ||
+                                            this._pref_num_meth_id && msg.method_id_type == RPCMethodIDType.STR_NUM;
+                    this._init_fut_rj.resolve(msg);
+                }
                 return;
             }
             const [msgtype, msgid] = msg.slice(0, 2);
@@ -155,11 +165,11 @@ class RPCClient{
                         if(err){
                             if(!p.cancelled) {
                                 const e = new RPCServerError(err);
-                                p.reject(e);
+                                p._reject(e);
                                 p._response_stream && p._response_stream.put_nowait(e, true);
                             }
                         }else{
-                            p.resolve(result);
+                            p._resolve(result);
                         }
                         this._pop_promise(msgid);
                         break;
@@ -170,7 +180,7 @@ class RPCClient{
 
                     case RPCMsgType.RESPONSE_STREAM_END:
                         p.response_stream.force_close_nowait();
-                        p.resolve();
+                        p._resolve();
                         this._pop_promise(msgid);
                         break;                        
                 }
@@ -183,16 +193,22 @@ class RPCClient{
         if (this._ws && ws) throw 'Socket is already set';
         if (!this._ws) this._ws = ws;
         this._ws.onmessage = this._on_data.bind(this);
-        await this._init_fut;
+        this._init_fut = new Promise((r,j)=>{
+            this._init_fut_rj.resolve=r;
+            this._init_fut_rj.reject=j;
+            this._ws.send(msgpack.serialize({version: __version__}));
+        });
+        return await this._init_fut;
     }
 
     get rpc_info() {
         return this._rpc_info;
     }
 
-    rpc(method, params, options={}) {
+    rpc(method, params=[], options={}) {
         const index = this._rpc_ls.indexOf(method);
         if(index < 0) throw new RPCClientError("Unknown RPC method "+method);
+        if(params.constructor!=Array) [params, options] = [[], params];
         var [req, resp] = this._rpc_info[index].slice(2, 4);
         var request_stream = options.request_stream;
         if (req && !request_stream)
@@ -200,12 +216,14 @@ class RPCClient{
         else if (!req && request_stream)
             throw new RPCClientError(method+' is not a request-streaming RPC.')
         var response_stream = resp?(options.response_stream || new RPCStream(options.q_size||0)):null;
+        delete options.request_stream;
+        delete options.response_stream;
         const msgid = this._next_msgid();
         const rj={};
         const p = new RPCFuture((resolve, reject)=>{
             rj.resolve=resolve;
             rj.reject=reject;
-            this._send_request(msgid, this._use_meth_num?this._rpc_ls.indexOf(method):method, params);
+            this._send_request(msgid, this._use_num_meth_id?this._rpc_ls.indexOf(method):method, params, options);
             if (request_stream){
                 if(typeof request_stream[Symbol.iterator] === 'function'){
                     for(var e of request_stream)
@@ -229,7 +247,7 @@ class RPCClient{
         const p = this._pop_promise(msgid);
         if(p) {
             const e = new RPCClientError('Cancelled');
-            p.reject(e);
+            p._reject(e);
             p._response_stream && p._response_stream.put_nowait(e, true);
         }
         this._send_cancel(msgid);
@@ -247,8 +265,10 @@ class RPCClient{
         this._ws.send(msgpack.serialize([RPCMsgType.REQUEST_STREAM_END, msgid]));
     }
 
-    _send_request(msgid, method, params) {
-        this._ws.send(msgpack.serialize([RPCMsgType.REQUEST, msgid, method, params]));
+    _send_request(msgid, method, params, kwargs) {
+        var send_list = [RPCMsgType.REQUEST, msgid, method, params];
+        if(Object.entries(kwargs).length) send_list.push(kwargs);
+        this._ws.send(msgpack.serialize(send_list));
     }
 
     _pop_promise(msgid) {
@@ -258,10 +278,11 @@ class RPCClient{
     }
 
     _next_msgid() {
-        if(this._mid > 2**20)
-            this._mid = 1;
+        const mid = this._mid;
         this._mid += 1;
-        return this._mid;
+        if(this._mid > this._max_mid)
+            this._mid = this._min_mid;
+        return (mid in this._tasks)? this._next_msgid() : mid;
     }
 
 

@@ -5,13 +5,8 @@ async def main():
     async with websockets.connect('ws://localhost:8000') as ws, \
         wsmprpc.connect(ws) as stub:
 
-        # show all RPCs
-        print('[rpc info]')
-        for fun_sig, doc_str, request_stream, response_stream in stub.rpc_info:
-            print(fun_sig)
-            print(' '*4 + doc_str)
-            print(' '*4 + f'{request_stream=}, {response_stream=}')
-            print('-'*10)
+        # print all rpc
+        stub.help()
 
         # normal rpc
         print('1/3=', await stub.div(1, 3))

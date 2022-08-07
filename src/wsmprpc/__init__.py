@@ -3,4 +3,4 @@ from .client import RPCClient, connect
 from .stream import RPCStream
 from .error import *
 
-__version__ = "2.0.0"
+from .version import __version__

@@ -15,7 +15,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
 ]
 
-keywords = ["websocket", "socket", "TCP", "msgpack", "RPC", "streaming"]
+keywords = ["async", "websocket", "sanic", "TCP", "msgpack", "RPC", "streaming", "cancel"]
 dependencies = [
     "msgpack"
 ]

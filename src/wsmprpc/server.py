@@ -4,26 +4,34 @@ from collections import OrderedDict
 import msgpack
 from .stream import RPCStream
 from .msg_type import RPCMsgType
-from .method_type import RPCMethodType
+from .method_id_type import RPCMethodIDType
 from .error import *
+from . import version
+
+def _major_ver(ver):
+    return ver.split('.')[0] if isinstance(ver, str) else None
 
 class RPCServer:
 
     def __init__(self, ws=None):
         self.ws = ws
         self._packer = msgpack.Packer(use_bin_type=True)
+        self._reg_rpc = OrderedDict() # {fname: (fn, qsize)}
         self._rpc_info = None # [(sig, docstr, req_stream, resp_stream)]
         self._rpc_ls = None # [fname]
-        self._reg_rpc = OrderedDict() # {fname: (fn, qsize)}
-        self._rpc_meth_type = RPCMethodType.STR_NUM
+        self._rpc_meth_id_type = RPCMethodIDType.STR_NUM
+        self._done_reg = False
 
     def register(self, fn=None, *, q_size=0):
-        if fn:
-            self._reg_rpc.update({fn.__name__: (fn, q_size)})
-            return fn
-        return lambda fn: self.register(fn, q_size=q_size)
+        assert not self._done_reg, 'Cannot register new RPC after server is started'
+        if fn is None:
+            return lambda fn: self.register(fn, q_size=q_size)
+        assert inspect.isfunction(fn), f'{fn} is not a function'
+        self._reg_rpc.update({fn.__name__: (fn, q_size)})
+        return fn
 
     def unregister(self, fn):
+        assert not self._done_reg, 'Cannot unregister RPC after server is started'
         self._reg_rpc.pop(fn.__name__, None)
 
     @property
@@ -48,25 +56,39 @@ class RPCServer:
     async def run(self, ws=None):
         if ws is not None:
             self.ws = ws
+        self._done_reg = True
         tasks = {} # dict[msgid, (task, queue)]
         unpacker = msgpack.Unpacker(None, raw=False, use_list=False)
+        verified = False
         try:
-            await self.ws.send(self._packer.pack((self._rpc_meth_type.value, self.rpc_info)))
             async for data in self.ws:
                 unpacker.feed(data)
                 for msg in unpacker:
 
+                    if not verified:
+                        if _major_ver(msg.get('version')) == _major_ver(version.__version__):
+                            await self.ws.send(self._packer.pack({'version': version.__version__,
+                                                                'method_id_type': self._rpc_meth_id_type.value,
+                                                                'rpc_info': self.rpc_info}))
+                            verified = True
+                            continue
+                        else:
+                            await self.ws.send(self._packer.pack({'error': f'Incompatible version, server: {version.__version__}'}))
+                            return
+
                     msgtype, msgid = msg[:2]
                     if msgtype == RPCMsgType.REQUEST:
+                        if msgid in self._tasks:
+                            await self._send_error(msgid, f'Message id {msgid} already in use')
+                            continue
+
                         method_name = msg[2]
                         if isinstance(method_name, int) and 0<=method_name<len(self._rpc_ls):
                             method_name = self._rpc_ls[method_name]
                         method, q_size = self._reg_rpc.get(method_name, (None, 0))
 
-                        if method_name and method:
+                        if method:
                             task, q = None, None
-                            # kwoa = inspect.getfullargspec(method).kwonlyargs
-                            # if kwoa and kwoa[-1]=='request_stream':
                             if 'request_stream' in inspect.getfullargspec(method).kwonlyargs:
                                 q = RPCStream(q_size)
 
@@ -89,7 +111,7 @@ class RPCServer:
                                 task.add_done_callback(lambda f: tasks.pop(msgid, None))
 
                         else:
-                            await self._send_error(msgid, f'Unknown function {method_name}.')
+                            await self._send_error(msgid, f'Unknown method id {method_name}.')
 
                     else:
                         task, q = tasks.get(msgid, (None, None))

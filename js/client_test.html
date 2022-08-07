@@ -20,16 +20,20 @@ ws.onopen = async function(e) {
 
 
     // normal rpc
-    console.log('1/3=', await stub.rpc('div',[1, 3]))
+    console.log('1/3=', await stub.rpc('div', [1, 3]))
 
-    // cancellation
+    // use keyword
+    console.log('echo:', await stub.rpc('delay_echo', {delay:1, echo:'echo'}))
+
+    // use positional arguments
     var echo = stub.rpc('delay_echo', [1, 'echo'])    
     await sleep(500)
+    // cancellation
     echo.cancel()
     await echo.then(r=>{console.log('echo:', r)}, e=>{console.log('echo cancelled')})
 
     // request streaming
-    console.log('1+2+3=', await stub.rpc('sum', [], {request_stream: [1,2,3]}))
+    console.log('1+2+3=', await stub.rpc('sum', {request_stream: [1,2,3]}))
 
     // response streaming
     console.log("repeat('bla...', 3):")
@@ -38,7 +42,7 @@ ws.onopen = async function(e) {
 
     // combine request and response streaming
     console.log("uppercase(request_stream=['hello', 'rpc']):")
-    for await(var e of stub.rpc('uppercase', [], {request_stream: ['hello', 'rpc']}))
+    for await(var e of stub.rpc('uppercase', {request_stream: ['hello', 'rpc']}))
         console.log('    ', e)
 }
 

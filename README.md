@@ -1,6 +1,6 @@
 # wsmpRPC
 
-asynchronous Python msgpack RPC over websocket(or TCP socket)
+asynchronous Python msgpack RPC over websocket (or TCP socket)
 
 ## Features
 
@@ -10,8 +10,9 @@ asynchronous Python msgpack RPC over websocket(or TCP socket)
 * Supports **bidirectional streaming** RPC, where the client sends/receives a sequence of messages to/from server within one RPC.
 * No need to define .proto files like [gRPC](https://grpc.io/docs/tutorials/basic/python/). thanks to python's dynamic features, RPC methods defined on server side can be readily used by client as if they're client's own methods.
 * **Exceptions** raised in server RPC methods will also raise on client side.
+* Function signatures and docstrings written on server side are also known to client.
 * Easy integration into any async web frameworks that support **websocket**.
-* lib for **javascript** client on web browsers.
+* Support for **javascript** client on web browsers.
 
 ## Install
 

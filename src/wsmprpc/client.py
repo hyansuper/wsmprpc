@@ -6,9 +6,10 @@ except ImportError:
     from collections.abc import Iterable
 import msgpack
 from .msg_type import RPCMsgType
-from .method_type import RPCMethodType
+from .method_id_type import RPCMethodIDType
 from .stream import RPCStream
 from .error import *
+from . import version
 
 class RPCFuture(asyncio.Future):
 
@@ -71,15 +72,16 @@ class RPCFuture(asyncio.Future):
 
 
 class RPCClient:
-    def __init__(self, ws=None, *, meth_num_first=False):
+    def __init__(self, ws=None, *, pref_num_meth_id=False):
         self.ws = ws
-        self._meth_num_first = meth_num_first
+        self._pref_num_meth_id = pref_num_meth_id
         self._packer = msgpack.Packer(use_bin_type=True)
-        self._mid = 1 # 0 reserved
+        self._min_mid = 1 # 0 reserved
+        self._max_mid = 2**16 -1
+        self._mid = self._min_mid
         self._tasks = {}
         self._rpc_info = None
         self._rpc_ls = None
-        self._rpc_meth_type = None
         self._init_fut = asyncio.Future()
 
     async def connect(self, ws=None):
@@ -88,7 +90,7 @@ class RPCClient:
         if self.ws is None:
             self.ws = ws
         asyncio.create_task(self._run())
-        await self._init_fut
+        return await self._init_fut
 
     async def __aenter__(self):
         await self.connect()
@@ -99,33 +101,52 @@ class RPCClient:
 
     @property
     def rpc_info(self):
-        '''(method_sigature, docstring, request_stream, response_stream)'''
-        assert self._init_fut.done()
+        '''list of rpc methods (method_sigature, docstring, request_stream, response_stream)'''
+        assert self._init_fut.done(), 'RPCClient not connected'
         return self._rpc_info
 
-    @property
-    def rpc_method_type(self):
-        assert self._init_fut.done()
-        return self._rpc_meth_type
+    def help(self, method=None):
+        '''print rpc info of [method], or print all rpc info if [method] is not provided'''
+        if method is None:
+            assert self._init_fut.done(), 'RPCClient not connected'
+            for i in range(len(self._rpc_ls)):
+                self.help(i)
+                print('-'*10)
+        else:
+            method_index = self._meth_to_num(method) if isinstance(method, str) else method
+            sig, docstr, request_stream, response_stream = self._rpc_info[method_index]
+            print(sig)
+            print(' '*4, docstr)
+            print(' '*4, f'[{request_stream=}, {response_stream=}]')
 
     def _next_msgid(self):
-        if self._mid >= 2**20:
-            self._mid = 1
+        mid = self._mid
         self._mid += 1
-        return self._mid
+        if self._mid > self._max_mid:
+            self._mid = self._min_mid
+        return mid if mid not in self._tasks else self._next_msgid()
 
     async def _run(self):
         unpacker = msgpack.Unpacker(None, raw=False, use_list=False)
+        # send client verification info
+        await self.ws.send(self._packer.pack({'version': version.__version__}))
+
         async for data in self.ws:
             unpacker.feed(data)
             for msg in unpacker:
 
                 if not self._init_fut.done():
-                    self._rpc_meth_type, self._rpc_info = msg
-                    self._use_meth_num = self._rpc_meth_type == RPCMethodType.NUM.value or \
-                                        self._meth_num_first and self._rpc_meth_type == RPCMethodType.STR_NUM.value
+                    if (err:=msg.get('error')) is not None:
+                        self._init_fut.set_exception(RPCServerError(str(err)))
+                        return
+                    self._max_mid = msg.get('max_mid', self._max_mid)
+                    self._mid = self._min_mid = msg.get('min_mid', self._min_mid)
+                    assert self._min_mid < self._max_mid
+                    self._rpc_info = msg['rpc_info']
+                    self._use_num_meth_id = msg['method_id_type'] == RPCMethodIDType.NUM.value or \
+                                        self._pref_num_meth_id and msg['method_id_type'] == RPCMethodIDType.STR_NUM.value
                     self._rpc_ls = [sig[:sig.index('(')] for sig, *_ in self._rpc_info]
-                    self._init_fut.set_result(None)
+                    self._init_fut.set_result(msg)
                     continue
 
                 msgtype, msgid = msg[:2]
@@ -134,7 +155,7 @@ class RPCClient:
                     t = self._tasks.pop(msgid, None)
                     if t and not t.done():
                         if err:
-                            e = RPCServerError(err)
+                            e = RPCServerError(str(err))
                             t.set_exception(e)
                             t._response_stream and t._response_stream.force_put_nowait(e)
                         else:
@@ -176,11 +197,15 @@ class RPCClient:
                 await self._send_stream_chunck(msgid, i)
         await self._send_stream_end(msgid)
 
-    def _request(self, method, *args, **kwargs):
+    def _meth_to_num(self, method):
+        assert self._init_fut.done(), 'RPCClient not connected'
         try:
-            method_index = self._rpc_ls.index(method)
+            return self._rpc_ls.index(method)
         except ValueError:
             raise RPCClientError(f"Unknown RPC method {method}")
+
+    def _request(self, method, *args, **kwargs):
+        method_index = self._meth_to_num(method)
         req, resp = self._rpc_info[method_index][2:4]
         req_iter = kwargs.pop('request_stream', None)
         if req and req_iter is None:
@@ -190,7 +215,7 @@ class RPCClient:
         resp_iter = kwargs.pop('response_stream', RPCStream() if resp else None)
         msgid = self._next_msgid()
         async def start():
-            await self._send_request(msgid, method_index if self._use_meth_num else method, args, kwargs)
+            await self._send_request(msgid, method_index if self._use_num_meth_id else method, args, kwargs)
             if req_iter:
                 await self._req_iter(msgid, req_iter)
         fut = RPCFuture(msgid=msgid, start=start, cancel=self._send_cancel, response_stream=resp_iter)
