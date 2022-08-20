@@ -10,8 +10,8 @@ ws.onopen = async function(e) {
     var stub = await RPCClient.connect(ws)
 
     // show rpc_info
-    console.log('rpc_info:')
-    for(var [fn_sig, doc_str, request_stream, response_stream] of stub.rpc_info) {        
+    console.log('rpc_defs:')
+    for(var [fn_sig, doc_str, request_stream, response_stream] of stub.rpc_defs) {        
         console.log(fn_sig);
         console.log('    ', doc_str);
         console.log('    ', 'request_stream:', request_stream, ',response_stream:', response_stream);

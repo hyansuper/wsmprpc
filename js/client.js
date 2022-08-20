@@ -131,9 +131,9 @@ class RPCClient{
 
     constructor(ws, pref_num_meth_id=false) {
         this._ws = ws;        
-        this._min_mid = 1;
-        this._max_mid = 2**16-1;
-        this._mid = this._min_mid;
+        this._min_msgid = 1;
+        this._max_msgid = 2**16-1;
+        this._msgid = this._min_msgid;
         this._pref_num_meth_id = pref_num_meth_id;
         this._tasks = {};
         this._init_fut_rj = {};
@@ -142,16 +142,16 @@ class RPCClient{
     async _on_data (data) {
         try{
             const msg = msgpack.deserialize(await data.data.arrayBuffer());
-            if (!this._rpc_info){
-                if (msg.error) {
-                    this._init_fut_rj.reject(new RPCServerError(msg.error));
+            if (!this._rpc_defs){
+                if (msg.err) {
+                    this._init_fut_rj.reject(new RPCServerError(msg.err));
                 } else {
-                    this._min_mid = msg.min_mid ?? this._min_mid;
-                    this._max_mid = msg.max_mid ?? this._max_mid;
-                    this._rpc_info = msg.rpc_info;
-                    this._rpc_ls = this._rpc_info.map(([sig])=> sig.substring(0, sig.indexOf('(')));
-                    this._use_num_meth_id = msg.method_id_type == RPCMethodIDType.NUM ||
-                                            this._pref_num_meth_id && msg.method_id_type == RPCMethodIDType.STR_NUM;
+                    this._min_msgid = msg.min_msgid ?? this._min_msgid;
+                    this._max_msgid = msg.max_msgid ?? this._max_msgid;
+                    this._rpc_defs = msg.rpc_defs;
+                    this._rpc_ls = this._rpc_defs.map(([sig])=> sig.substring(0, sig.indexOf('(')));
+                    this._use_num_meth_id = msg.mthid_t == RPCMethodIDType.NUM ||
+                                            this._pref_num_meth_id && msg.mthid_t == RPCMethodIDType.STR_NUM;
                     this._init_fut_rj.resolve(msg);
                 }
                 return;
@@ -196,20 +196,20 @@ class RPCClient{
         this._init_fut = new Promise((r,j)=>{
             this._init_fut_rj.resolve=r;
             this._init_fut_rj.reject=j;
-            this._ws.send(msgpack.serialize({version: __version__}));
+            this._ws.send(msgpack.serialize({ver: __version__}));
         });
         return await this._init_fut;
     }
 
-    get rpc_info() {
-        return this._rpc_info;
+    get rpc_defs() {
+        return this._rpc_defs;
     }
 
     rpc(method, params=[], options={}) {
         const index = this._rpc_ls.indexOf(method);
         if(index < 0) throw new RPCClientError("Unknown RPC method "+method);
         if(params.constructor!=Array) [params, options] = [[], params];
-        var [req, resp] = this._rpc_info[index].slice(2, 4);
+        var [req, resp] = this._rpc_defs[index].slice(2, 4);
         var request_stream = options.request_stream;
         if (req && !request_stream)
             throw new RPCClientError(method+' must take "request_stream" as the a keyword arg.')
@@ -278,11 +278,11 @@ class RPCClient{
     }
 
     _next_msgid() {
-        const mid = this._mid;
-        this._mid += 1;
-        if(this._mid > this._max_mid)
-            this._mid = this._min_mid;
-        return (mid in this._tasks)? this._next_msgid() : mid;
+        const msgid = this._msgid;
+        this._msgid += 1;
+        if(this._msgid > this._max_msgid)
+            this._msgid = this._min_msgid;
+        return (msgid in this._tasks)? this._next_msgid() : msgid;
     }
 
 

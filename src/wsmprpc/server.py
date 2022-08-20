@@ -13,39 +13,39 @@ def _major_ver(ver):
 
 class RPCServer:
 
-    def __init__(self, ws=None):
+    def __init__(self, ws=None, *, use_single_float=False):
         self.ws = ws
-        self._packer = msgpack.Packer(use_bin_type=True)
+        self._packer = msgpack.Packer(use_bin_type=True, use_single_float=use_single_float)
         self._reg_rpc = OrderedDict() # {fname: (fn, qsize)}
-        self._rpc_info = None # [(sig, docstr, req_stream, resp_stream)]
+        self._rpc_defs = None # [(sig, docstr, req_stream, resp_stream)]
         self._rpc_ls = None # [fname]
         self._rpc_meth_id_type = RPCMethodIDType.STR_NUM
         self._done_reg = False
 
-    def register(self, fn=None, *, q_size=0):
+    def register(self, fn=None, *, name=None, q_size=0):
         assert not self._done_reg, 'Cannot register new RPC after server is started'
         if fn is None:
-            return lambda fn: self.register(fn, q_size=q_size)
+            return lambda fn: self.register(fn, name=name, q_size=q_size)
         assert inspect.isfunction(fn), f'{fn} is not a function'
-        self._reg_rpc.update({fn.__name__: (fn, q_size)})
+        self._reg_rpc.update({name or fn.__name__: (fn, q_size)})
         return fn
 
     def unregister(self, fn):
         assert not self._done_reg, 'Cannot unregister RPC after server is started'
-        self._reg_rpc.pop(fn.__name__, None)
+        self._reg_rpc.pop(fn if isinstance(fn, str) else fn.__name__)
 
     @property
-    def rpc_info(self):
+    def rpc_defs(self):
         '''(fn_sig, docstring, request_stream, response_stream)'''
-        if self._rpc_info is None:
-            self._rpc_info = [
+        if self._rpc_defs is None:
+            self._rpc_defs = [
                 (fname + str(inspect.signature(fn)),
                     fn.__doc__ or '',
                     'request_stream' in inspect.getfullargspec(fn).kwonlyargs,
                     inspect.isasyncgenfunction(fn))
                 for fname, (fn, qsize) in self._reg_rpc.items()]
             self._rpc_ls = list(self._reg_rpc.keys())
-        return self._rpc_info
+        return self._rpc_defs
 
     @staticmethod
     async def _join(tasks, timeout=10):
@@ -66,19 +66,19 @@ class RPCServer:
                 for msg in unpacker:
 
                     if not verified:
-                        if _major_ver(msg.get('version')) == _major_ver(version.__version__):
-                            await self.ws.send(self._packer.pack({'version': version.__version__,
-                                                                'method_id_type': self._rpc_meth_id_type.value,
-                                                                'rpc_info': self.rpc_info}))
+                        if _major_ver(msg.get('ver')) == _major_ver(version.__version__):
+                            await self.ws.send(self._packer.pack({'ver': version.__version__,
+                                                                'mthid_t': self._rpc_meth_id_type.value,
+                                                                'rpc_defs': self.rpc_defs}))
                             verified = True
                             continue
                         else:
-                            await self.ws.send(self._packer.pack({'error': f'Incompatible version, server: {version.__version__}'}))
+                            await self.ws.send(self._packer.pack({'err': f'Incompatible version, server: {version.__version__}'}))
                             return
 
                     msgtype, msgid = msg[:2]
                     if msgtype == RPCMsgType.REQUEST:
-                        if msgid in self._tasks:
+                        if msgid in tasks:
                             await self._send_error(msgid, f'Message id {msgid} already in use')
                             continue
 

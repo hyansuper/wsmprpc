@@ -17,8 +17,8 @@ app = sanic.Sanic(__name__)
 async def home(request, ws):
     await rpc_server.run(ws)
 
-@app.route('/rpc_info')
-async def rpc_doc(request):
-    return sanic.response.json(rpc_server.rpc_info)
+@app.route('/rpc_defs')
+async def rpc_defs(request):
+    return sanic.response.json(rpc_server.rpc_defs)
 
 app.run(host="0.0.0.0", port=8000)

@@ -1,17 +1,18 @@
-import asyncio, websockets
+import asyncio
+import websockets
 import wsmprpc
 
 async def main():
     async with websockets.connect('ws://localhost:8000') as ws, \
         wsmprpc.connect(ws) as stub:
 
-        # print all rpc
+        # print all rpc method definitions
         stub.help()
 
         # normal rpc
         print('1/3=', await stub.div(1, 3))
 
-        # cancellation
+        # cancel
         try:
             ech = stub.delay_echo(delay=2, echo='ok')
             ech.cancel() # or, await ech.async_cancel()

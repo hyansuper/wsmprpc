@@ -72,15 +72,15 @@ class RPCFuture(asyncio.Future):
 
 
 class RPCClient:
-    def __init__(self, ws=None, *, pref_num_meth_id=False):
+    def __init__(self, ws=None, *, pref_num_meth_id=False, use_single_float=False):
         self.ws = ws
         self._pref_num_meth_id = pref_num_meth_id
-        self._packer = msgpack.Packer(use_bin_type=True)
-        self._min_mid = 1 # 0 reserved
-        self._max_mid = 2**16 -1
-        self._mid = self._min_mid
+        self._packer = msgpack.Packer(use_bin_type=True, use_single_float=use_single_float)
+        self._min_msgid = 1 # 0 reserved
+        self._max_msgid = 2**16 -1
+        self._msgid = self._min_msgid
         self._tasks = {}
-        self._rpc_info = None
+        self._rpc_defs = None
         self._rpc_ls = None
         self._init_fut = asyncio.Future()
 
@@ -100,13 +100,13 @@ class RPCClient:
         pass
 
     @property
-    def rpc_info(self):
+    def rpc_defs(self):
         '''list of rpc methods (method_sigature, docstring, request_stream, response_stream)'''
         assert self._init_fut.done(), 'RPCClient not connected'
-        return self._rpc_info
+        return self._rpc_defs
 
     def help(self, method=None):
-        '''print rpc info of [method], or print all rpc info if [method] is not provided'''
+        '''print defintion of rpc [method], or print all rpc method defs if [method] is not provided'''
         if method is None:
             assert self._init_fut.done(), 'RPCClient not connected'
             for i in range(len(self._rpc_ls)):
@@ -114,38 +114,38 @@ class RPCClient:
                 print('-'*10)
         else:
             method_index = self._meth_to_num(method) if isinstance(method, str) else method
-            sig, docstr, request_stream, response_stream = self._rpc_info[method_index]
+            sig, docstr, request_stream, response_stream = self._rpc_defs[method_index]
             print(sig)
             print(' '*4, docstr)
             print(' '*4, f'[{request_stream=}, {response_stream=}]')
 
     def _next_msgid(self):
-        mid = self._mid
-        self._mid += 1
-        if self._mid > self._max_mid:
-            self._mid = self._min_mid
-        return mid if mid not in self._tasks else self._next_msgid()
+        msgid = self._msgid
+        self._msgid += 1
+        if self._msgid > self._max_msgid:
+            self._msgid = self._min_msgid
+        return msgid if msgid not in self._tasks else self._next_msgid()
 
     async def _run(self):
         unpacker = msgpack.Unpacker(None, raw=False, use_list=False)
-        # send client verification info
-        await self.ws.send(self._packer.pack({'version': version.__version__}))
+        # send client verification
+        await self.ws.send(self._packer.pack({'ver': version.__version__}))
 
         async for data in self.ws:
             unpacker.feed(data)
             for msg in unpacker:
 
                 if not self._init_fut.done():
-                    if (err:=msg.get('error')) is not None:
+                    if (err:=msg.get('err')) is not None:
                         self._init_fut.set_exception(RPCServerError(str(err)))
                         return
-                    self._max_mid = msg.get('max_mid', self._max_mid)
-                    self._mid = self._min_mid = msg.get('min_mid', self._min_mid)
-                    assert self._min_mid < self._max_mid
-                    self._rpc_info = msg['rpc_info']
-                    self._use_num_meth_id = msg['method_id_type'] == RPCMethodIDType.NUM.value or \
-                                        self._pref_num_meth_id and msg['method_id_type'] == RPCMethodIDType.STR_NUM.value
-                    self._rpc_ls = [sig[:sig.index('(')] for sig, *_ in self._rpc_info]
+                    self._max_msgid = msg.get('max_msgid', self._max_msgid)
+                    self._msgid = self._min_msgid = msg.get('min_msgid', self._min_msgid)
+                    assert self._min_msgid < self._max_msgid
+                    self._rpc_defs = msg['rpc_defs']
+                    self._use_num_meth_id = msg['mthid_t'] == RPCMethodIDType.NUM.value or \
+                                        self._pref_num_meth_id and msg['mthid_t'] == RPCMethodIDType.STR_NUM.value
+                    self._rpc_ls = [sig[:sig.index('(')] for sig, *_ in self._rpc_defs]
                     self._init_fut.set_result(msg)
                     continue
 
@@ -206,7 +206,7 @@ class RPCClient:
 
     def _request(self, method, *args, **kwargs):
         method_index = self._meth_to_num(method)
-        req, resp = self._rpc_info[method_index][2:4]
+        req, resp = self._rpc_defs[method_index][2:4]
         req_iter = kwargs.pop('request_stream', None)
         if req and req_iter is None:
             raise RPCClientError(f'{method} must take "request_stream" as a keyword arg.')
