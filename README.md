@@ -23,7 +23,7 @@ asynchronous Python msgpack RPC over websocket (or TCP socket)
 * [msgpack-python](https://github.com/msgpack/msgpack-python)
 
 ## Getting started
-[simple tutorial](https://github.com/hyansuper/wsmprpc/blob/master/get_started.rst)
+[simple tutorial](https://github.com/hyansuper/wsmprpc/blob/master/get_started.md)
 
 ## Examples
 
