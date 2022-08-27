@@ -2,7 +2,7 @@ import asyncio
 import websockets
 import wsmprpc
 
-async def main():
+async def main(x):
     async with websockets.connect('ws://localhost:8000') as ws, \
         wsmprpc.connect(ws) as stub:
 

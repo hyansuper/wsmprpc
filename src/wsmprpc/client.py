@@ -1,9 +1,6 @@
 import asyncio
 import functools
-try:
-    from collections import Iterable
-except ImportError:
-    from collections.abc import Iterable
+from collections.abc import Iterable, AsyncIterable
 import msgpack
 from .msg_type import RPCMsgType
 from .method_id_type import RPCMethodIDType
@@ -74,8 +71,9 @@ class RPCFuture(asyncio.Future):
 class RPCClient:
     def __init__(self, ws=None, *, pref_num_meth_id=False, use_single_float=False):
         self.ws = ws
-        self._pref_num_meth_id = pref_num_meth_id
         self._packer = msgpack.Packer(use_bin_type=True, use_single_float=use_single_float)
+        self._pref_num_meth_id = pref_num_meth_id
+        self._msgid_eq_mthid = False
         self._min_msgid = 1 # 0 reserved
         self._max_msgid = 2**16 -1
         self._msgid = self._min_msgid
@@ -124,7 +122,10 @@ class RPCClient:
         self._msgid += 1
         if self._msgid > self._max_msgid:
             self._msgid = self._min_msgid
-        return msgid if msgid not in self._tasks else self._next_msgid()
+        return msgid if self._msgid_available(msgid) else self._next_msgid()
+
+    def _msgid_available(self, msgid):
+        return msgid not in self._tasks
 
     async def _run(self):
         unpacker = msgpack.Unpacker(None, raw=False, use_list=False)
@@ -142,9 +143,12 @@ class RPCClient:
                     self._max_msgid = msg.get('max_msgid', self._max_msgid)
                     self._msgid = self._min_msgid = msg.get('min_msgid', self._min_msgid)
                     assert self._min_msgid < self._max_msgid
-                    self._rpc_defs = msg['rpc_defs']
-                    self._use_num_meth_id = msg['mthid_t'] == RPCMethodIDType.NUM.value or \
+                    self._msgid_eq_mthid = msg.get('msgid_eq_mthid', False)
+                    self._use_num_meth_id = self._msgid_eq_mthid or \
+                                        msg['mthid_t'] == RPCMethodIDType.NUM.value or \
                                         self._pref_num_meth_id and msg['mthid_t'] == RPCMethodIDType.STR_NUM.value
+
+                    self._rpc_defs = msg['rpc_defs']
                     self._rpc_ls = [sig[:sig.index('(')] for sig, *_ in self._rpc_defs]
                     self._init_fut.set_result(msg)
                     continue
@@ -176,7 +180,10 @@ class RPCClient:
         return functools.partial(self._request, method)
 
     async def _send_request(self, msgid, method, args, kwargs):
-        pk = (RPCMsgType.REQUEST.value, msgid, method, args, kwargs) if kwargs else (RPCMsgType.REQUEST.value, msgid, method, args)
+        if self._msgid_eq_mthid:
+            pk = (RPCMsgType.REQUEST.value, method, args, kwargs) if kwargs else (RPCMsgType.REQUEST.value, method, args)
+        else:
+            pk = (RPCMsgType.REQUEST.value, msgid, method, args, kwargs) if kwargs else (RPCMsgType.REQUEST.value, msgid, method, args)
         await self.ws.send(self._packer.pack(pk))
 
     async def _send_stream_chunck(self, msgid, chunck):
@@ -192,9 +199,11 @@ class RPCClient:
         if isinstance(iter, Iterable):
             for i in iter:
                 await self._send_stream_chunck(msgid, i)
-        else:
+        elif isinstance(iter, AsyncIterable):
             async for i in iter:
                 await self._send_stream_chunck(msgid, i)
+        else:
+            raise RPCClientError('request_stream not iterable')
         await self._send_stream_end(msgid)
 
     def _meth_to_num(self, method):
@@ -213,13 +222,15 @@ class RPCClient:
         elif not req and req_iter:
             raise RPCClientError(f'{method} is not a request-streaming RPC.')
         resp_iter = kwargs.pop('response_stream', RPCStream() if resp else None)
-        msgid = self._next_msgid()
+        msgid = method_index if self._msgid_eq_mthid else self._next_msgid()
         async def start():
+            if self._msgid_eq_mthid and not self._msgid_available(method_index):
+                raise RPCClientError(f'RPC {method} already running')
+            self._tasks[msgid] = fut
             await self._send_request(msgid, method_index if self._use_num_meth_id else method, args, kwargs)
             if req_iter:
                 await self._req_iter(msgid, req_iter)
         fut = RPCFuture(msgid=msgid, start=start, cancel=self._send_cancel, response_stream=resp_iter)
-        self._tasks[msgid] = fut
         return fut
 
 

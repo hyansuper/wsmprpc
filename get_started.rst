@@ -54,7 +54,7 @@ asyncio.run(main())
 As you can see, the RPC method defined on server side is readily available on the client side.
 
 > **Note**
-> Just remember that in the client's perspective, all RPC methods are async methods, even if they're non-async on the server side. So you should append `await` keyword to retrieve the response.
+> In the client's perspective, all RPC methods are async methods, even if they're non-async on the server side. So you should append `await` keyword to retrieve the response.
 
 If you're not sure what RPCs are available or how to use them, `client.help()` or specifically `client.help('div')` will show you the RPC function signatures and docstrings written on the server side.
 

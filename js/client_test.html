@@ -3,7 +3,7 @@
 <script>
 function sleep(ms){return new Promise(r=>{setTimeout(r,ms)})}
 
-ws=new WebSocket('ws://localhost:8000/');
+ws=new WebSocket('ws://localhost:8000');
 
 ws.onopen = async function(e) {
 

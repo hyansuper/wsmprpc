@@ -135,6 +135,7 @@ class RPCClient{
         this._max_msgid = 2**16-1;
         this._msgid = this._min_msgid;
         this._pref_num_meth_id = pref_num_meth_id;
+        this._msgid_eq_mthid = false;
         this._tasks = {};
         this._init_fut_rj = {};
     }
@@ -148,9 +149,11 @@ class RPCClient{
                 } else {
                     this._min_msgid = msg.min_msgid ?? this._min_msgid;
                     this._max_msgid = msg.max_msgid ?? this._max_msgid;
+                    this._msgid_eq_mthid = msg.msgid_eq_mthid ?? this._msgid_eq_mthid;
                     this._rpc_defs = msg.rpc_defs;
                     this._rpc_ls = this._rpc_defs.map(([sig])=> sig.substring(0, sig.indexOf('(')));
-                    this._use_num_meth_id = msg.mthid_t == RPCMethodIDType.NUM ||
+                    this._use_num_meth_id = this._msgid_eq_mthid ||
+                                            msg.mthid_t == RPCMethodIDType.NUM ||
                                             this._pref_num_meth_id && msg.mthid_t == RPCMethodIDType.STR_NUM;
                     this._init_fut_rj.resolve(msg);
                 }
@@ -218,12 +221,16 @@ class RPCClient{
         var response_stream = resp?(options.response_stream || new RPCStream(options.q_size||0)):null;
         delete options.request_stream;
         delete options.response_stream;
-        const msgid = this._next_msgid();
+        const msgid = this._msgid_eq_mthid?index: this._next_msgid();
         const rj={};
         const p = new RPCFuture((resolve, reject)=>{
             rj.resolve=resolve;
             rj.reject=reject;
-            this._send_request(msgid, this._use_num_meth_id?this._rpc_ls.indexOf(method):method, params, options);
+            if(this._msgid_eq_mthid && !this._msgid_available(msgid)) {
+                reject('RPC '+method+' already running');
+                return;
+            }
+            this._send_request(msgid, this._use_num_meth_id?index:method, params, options);
             if (request_stream){
                 if(typeof request_stream[Symbol.iterator] === 'function'){
                     for(var e of request_stream)
@@ -266,7 +273,7 @@ class RPCClient{
     }
 
     _send_request(msgid, method, params, kwargs) {
-        var send_list = [RPCMsgType.REQUEST, msgid, method, params];
+        var send_list = this._msgid_eq_mthid? [RPCMsgType.REQUEST, method, params]: [RPCMsgType.REQUEST, msgid, method, params];
         if(Object.entries(kwargs).length) send_list.push(kwargs);
         this._ws.send(msgpack.serialize(send_list));
     }
@@ -282,9 +289,12 @@ class RPCClient{
         this._msgid += 1;
         if(this._msgid > this._max_msgid)
             this._msgid = this._min_msgid;
-        return (msgid in this._tasks)? this._next_msgid() : msgid;
+        return this._msgid_available(msgid)? this._next_msgid() : msgid;
     }
 
+    _msgid_available(msgid) {
+        return msgid in this._tasks;
+    }
 
     static async connect (ws) {
         var client = new RPCClient();

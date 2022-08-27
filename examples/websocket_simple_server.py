@@ -1,11 +1,7 @@
 import asyncio
 import websockets
 import wsmprpc
-try:
-    from collections import Iterable
-except ImportError:
-    from collections.abc import Iterable
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Iterable, AsyncIterable
 
 # Create a rpc server to register rpc functions to.
 rpc_server = wsmprpc.RPCServer()
@@ -25,7 +21,7 @@ async def delay_echo(delay: float, echo: str) -> str:
         await asyncio.sleep(delay)
         return echo
     except asyncio.CancelledError:
-        pass
+        pass # when the client cancels server execution
     finally:
         pass # do cleaning up
 
